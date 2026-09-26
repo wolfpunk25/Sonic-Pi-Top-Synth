@@ -28,7 +28,7 @@ class Config:
     def __init__(self, path: Optional[str]):
         c = configparser.ConfigParser(inline_comment_prefixes=(";", "#"))
         c.read_dict({
-            "place": {"name": "London", "country": "GB", "latitude": "", "longitude": ""},
+            "place": {"name": "Lincoln", "country": "GB", "latitude": "", "longitude": ""},
             "behaviour": {"refresh_minutes": "10", "screensaver_seconds": "120",
                           "start_page": "now",
                           "rain_alert_minutes": "30", "battery_warnings": "20, 10",
