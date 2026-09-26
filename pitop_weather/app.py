@@ -82,6 +82,8 @@ class App:
         self.battery_warned: set = set()
         self._last_battery_poll = -1e9
         self._last_frame: Optional[bytes] = None
+        self._last_draw = -1e9
+        self._dirty = False     # set from other threads when there's news to show
         self._lock = threading.Lock()
         hw.on_button(lambda name, down: self.events.put((name, down)))
 
@@ -128,6 +130,7 @@ class App:
         with self._lock:
             self.weather = w
             self.status.error = ""
+            self._dirty = True
         self.check_rain_alert()
 
     def view(self) -> Optional[forecast.Weather]:
@@ -150,6 +153,7 @@ class App:
         return in_quiet_hours(self.local_now(), self.cfg.quiet_from, self.cfg.quiet_until)
 
     def alert(self, text: str, page: str):
+        self._dirty = True
         self.page = self.names.index(page)
         self.saver = False
         self.last_input = self.clock()
@@ -206,15 +210,22 @@ class App:
             self.hw.show(img)
 
     def tick(self):
+        pressed = False
         while True:
             try:
                 name, down = self.events.get_nowait()
             except queue.Empty:
                 break
             self.handle(name, down)
+            pressed = True
         self.check_hold()
         self.poll_battery()
-        self.draw()
+        # buttons redraw at once; otherwise once a second is plenty for a clock
+        now = self.clock()
+        if pressed or self._dirty or now - self._last_draw >= 1.0:
+            self._dirty = False
+            self._last_draw = now
+            self.draw()
 
 
 # ---- fetching -----------------------------------------------------------------

@@ -197,6 +197,23 @@ class TestApp(unittest.TestCase):
         self.assertFalse(a.saver)
         self.assertEqual(a.names[a.page], "next")
 
+    def test_redraw_is_throttled_but_buttons_are_instant(self):
+        a, hw, spk, clk = make_app()
+        a.set_weather(weather())
+        a.tick()
+        renders = []
+        orig = a.frame
+        a.frame = lambda: renders.append(1) or orig()
+        for _ in range(10):
+            a.tick()
+        self.assertEqual(renders, [])
+        press(a, "down")                    # press and release: both re-render...
+        self.assertEqual(len(renders), 2)
+        self.assertEqual(len(hw.frames), 2)  # ...but only the new picture is sent
+        clk.t += 1.0
+        a.tick()
+        self.assertEqual(len(renders), 3)
+
     def test_redraws_only_on_change(self):
         a, hw, spk, clk = make_app()
         a.set_weather(weather())
