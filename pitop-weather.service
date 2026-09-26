@@ -1,0 +1,16 @@
+[Unit]
+Description=pi-top weather station on the miniscreen
+After=network-online.target pipewire.service
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=%h/pitop-weather
+ExecStart=/usr/bin/python3 -m pitop_weather
+# Holding Cancel for 2 s exits cleanly and hands the screen back to the
+# pi-top menu; only a crash restarts it.
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
