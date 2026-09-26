@@ -309,6 +309,13 @@ class PiTop(Hardware):
 
     def show(self, img):
         self.ms.display_image(img)
+        # a copy of the screen in RAM (tmpfs), so it can be checked over SSH
+        run = os.environ.get("XDG_RUNTIME_DIR")
+        if run:
+            try:
+                img.save(os.path.join(run, "pitop-weather.png"))
+            except OSError:
+                pass
 
     def battery(self):
         try:
