@@ -69,13 +69,14 @@ def sheet(frames, title):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--live", metavar="PLACE")
+    ap.add_argument("--country", default="GB", help="two-letter code; stops Lincoln meaning Nebraska")
     ap.add_argument("--out", default=os.path.join(HERE, "sim-out"))
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     st = render.Status(battery=64, charging=False, minutes_left=205, ip="192.168.68.53", stale_minutes=3)
 
     if a.live:
-        lat, lon, name = forecast.geocode(a.live)
+        lat, lon, name = forecast.geocode(a.live, a.country)
         runs = [("live", forecast.fetch(lat, lon), None, name)]
     else:
         j = json.load(open(os.path.join(HERE, "tests", "sample_london.json")))
