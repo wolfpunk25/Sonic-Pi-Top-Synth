@@ -299,19 +299,23 @@ class PiTop(Hardware):
         self.ms = self.pt.miniscreen
 
     def on_button(self, cb):
+        # the SDK calls these with no arguments, so bind the name in a closure
+        def handler(name, down):
+            return lambda: cb(name, down)
         for name in ("up", "down", "select", "cancel"):
             b = getattr(self.ms, name + "_button")
-            b.when_pressed = (lambda n=name: cb(n, True))
-            b.when_released = (lambda n=name: cb(n, False))
+            b.when_pressed = handler(name, True)
+            b.when_released = handler(name, False)
 
     def show(self, img):
         self.ms.display_image(img)
 
     def battery(self):
         try:
-            b = self.pt.battery
-            left = b.time_remaining
-            return int(b.capacity), bool(b.is_charging), (int(left) if left else None)
+            # one request to pi-topd rather than one per property
+            state, capacity, left, _watts = self.pt.battery.get_full_state()
+            left = int(left)
+            return int(capacity), state != "0", (left if left > 0 else None)
         except Exception:
             return None, False, None
 
