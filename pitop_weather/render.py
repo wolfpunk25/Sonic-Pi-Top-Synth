@@ -343,9 +343,9 @@ def page_pressure(w: Weather, st: Status) -> Image.Image:
     if len(series) >= 2:
         vals = [s.pressure for s in series]
         lo, hi = min(vals), max(vals)
-        if hi - lo < 2:
+        if hi - lo < 6:     # keep a 1 hPa wobble looking like the non-event it is
             mid = (hi + lo) / 2
-            lo, hi = mid - 1, mid + 1
+            lo, hi = mid - 3, mid + 3
         t0 = series[0].time
         t1 = series[-1].time
         span = (t1 - t0).total_seconds() or 1
