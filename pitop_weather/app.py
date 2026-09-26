@@ -16,10 +16,12 @@ import time
 from datetime import datetime, time as dtime
 from typing import Callable, List, Optional
 
-from . import forecast, render, speech
+from . import forecast, recorder, render, speech
 
 HOLD_TO_QUIT = 2.0          # seconds holding Cancel hands the screen back
 BATTERY_POLL = 30.0
+MIC_POLL = 5.0              # how often the Record page looks for a newly plugged mic
+NOTICE_SECONDS = 6.0
 RETRY_AFTER_ERROR = 120.0
 CACHE = os.path.expanduser("~/.cache/pitop-weather")
 
@@ -34,6 +36,8 @@ class Config:
                           "rain_alert_minutes": "30", "battery_warnings": "20, 10",
                           "quiet_from": "22:00", "quiet_until": "08:00"},
             "voice": {"voice": "en-gb", "speed": "150", "volume": "100"},
+            "recorder": {"folder": "~/soundwalks", "seconds": "60", "device": "default",
+                         "sample_rate": "48000", "announce": "yes"},
         })
         if path and os.path.exists(path):
             c.read(path)
@@ -50,6 +54,12 @@ class Config:
         self.quiet_from = _hhmm(b["quiet_from"])
         self.quiet_until = _hhmm(b["quiet_until"])
         self.voice, self.speed, self.volume = v["voice"], v.getint("speed"), v.getint("volume")
+        r = c["recorder"]
+        self.rec_folder = os.path.expanduser(r["folder"])
+        self.rec_seconds = r.getfloat("seconds")
+        self.rec_device = r["device"]
+        self.rec_rate = r.getint("sample_rate")
+        self.rec_announce = r.getboolean("announce")
 
 
 def _hhmm(s: str) -> dtime:
@@ -66,14 +76,28 @@ def in_quiet_hours(now: datetime, start: dtime, end: dtime) -> bool:
 
 class App:
     def __init__(self, hw: "Hardware", cfg: Config, speaker, clock: Callable[[], float] = time.time,
-                 local_now: Callable[[], datetime] = datetime.now):
+                 local_now: Callable[[], datetime] = datetime.now, rec=None, player=None,
+                 find_mic: Callable[[], Optional[str]] = recorder.find_mic):
         self.hw, self.cfg, self.speaker = hw, cfg, speaker
+        self.rec = rec or recorder.Recorder(cfg.rec_folder, cfg.rec_rate, cfg.rec_seconds,
+                                            device=cfg.rec_device)
+        self.rec.on_done = self.recording_done
+        self.player = player or recorder.Player()
+        self.find_mic = find_mic
+        self.mic: Optional[str] = None
+        self.clips: List[recorder.Clip] = []
+        self.browsing = False
+        self.cursor = 0
+        self.notice = ""
+        self.notice_until = 0.0
+        self.place_info: Optional[tuple] = None     # (lat, lon, name) once resolved
+        self._last_mic_poll = -1e9
         self.clock, self.local_now = clock, local_now
         self.events: "queue.Queue[tuple]" = queue.Queue()
         self.names = [n for n, _ in render.PAGES]
         self.page = self.names.index(cfg.start_page) if cfg.start_page in self.names else 0
         self.weather: Optional[forecast.Weather] = None
-        self.status = render.Status()
+        self.status = render.Status(rec=render.RecView(max_seconds=cfg.rec_seconds))
         self.last_input = clock()
         self.saver = False
         self.cancel_down_at: Optional[float] = None
@@ -86,6 +110,7 @@ class App:
         self._dirty = False     # set from other threads when there's news to show
         self._lock = threading.Lock()
         hw.on_button(lambda name, down: self.events.put((name, down)))
+        self.refresh_clips()
 
     # ---- inputs ------------------------------------------------------
 
@@ -104,11 +129,26 @@ class App:
         if self.saver:          # the first press only wakes the screen
             self.saver = False
             return
+        if self.rec.recording:  # while recording, Select or Cancel stops; nothing else
+            if name in ("select", "cancel"):
+                self.rec.stop()
+            return
+        if self.browsing:
+            self.handle_browse(name)
+            return
+        page = self.names[self.page]
         if name == "up":
             self.page = (self.page - 1) % len(self.names)
         elif name == "down":
             self.page = (self.page + 1) % len(self.names)
+        elif name == "select" and page == "record":
+            self.start_recording()
+        elif name == "select" and page == "clips":
+            self.refresh_clips()
+            if self.clips:
+                self.browsing, self.cursor = True, 0
         elif name == "select":
+            self.player.stop()
             if self.speaker.busy:
                 self.speaker.stop()
             elif self.weather:
@@ -119,10 +159,87 @@ class App:
         elif name == "cancel":
             self.page = 0
 
+    def handle_browse(self, name: str):
+        if name == "up":
+            self.cursor = max(0, self.cursor - 1)
+        elif name == "down":
+            self.cursor = min(len(self.clips) - 1, self.cursor + 1)
+        elif name == "select":
+            clip = self.clips[self.cursor]
+            if self.player.playing == clip.wav:
+                self.player.stop()
+            else:
+                self.speaker.stop()
+                self.player.play(clip.wav)
+        elif name == "cancel":
+            self.player.stop()
+            self.browsing = False
+
     def check_hold(self):
         if self.cancel_down_at is not None and self.clock() - self.cancel_down_at >= HOLD_TO_QUIT:
             self.speaker.stop()
             self.running = False
+
+    # ---- recording ---------------------------------------------------
+
+    def poll_mic(self, force: bool = False):
+        if not force and (self.names[self.page] != "record" or
+                          self.clock() - self._last_mic_poll < MIC_POLL):
+            return
+        self._last_mic_poll = self.clock()
+        if not self.rec.recording:
+            self.mic = self.find_mic()
+            self.status.rec.free_minutes = recorder.free_minutes(self.cfg.rec_folder, self.cfg.rec_rate)
+
+    def weather_tag(self) -> Optional[dict]:
+        with self._lock:
+            w = self.weather
+        return w.conditions_at(self.local_now(), self.clock()) if w else None
+
+    def start_recording(self):
+        self.poll_mic(force=True)
+        if not self.mic:
+            self.show_notice("No microphone found")
+            return
+        self.speaker.stop()
+        self.player.stop()
+        lat, lon, name = self.place_info or (None, None, self.cfg.place)
+        meta = {"place": name, "latitude": lat, "longitude": lon,
+                "place_note": "the weather station's home, not a GPS fix",
+                "weather": self.weather_tag(), "mic": self.mic,
+                "battery": self.status.battery, "charging": self.status.charging}
+        self.rec.start(self.local_now(), meta)
+
+    def recording_done(self, clip: Optional[recorder.Clip], err: str):
+        """Called on the recorder's thread when a clip is finished."""
+        if clip:
+            self.refresh_clips()
+            self.show_notice("Saved %s" % render.mmss(clip.seconds))
+            if self.cfg.rec_announce:
+                self.speaker.say("Saved, %d seconds." % round(clip.seconds))
+        else:
+            self.show_notice(err)
+        self.last_input = self.clock()
+
+    def show_notice(self, text: str):
+        self.notice, self.notice_until = text, self.clock() + NOTICE_SECONDS
+        self._dirty = True
+
+    def refresh_clips(self):
+        self.clips = recorder.list_clips(self.cfg.rec_folder)
+        self.cursor = min(self.cursor, max(0, len(self.clips) - 1))
+
+    def rec_view(self):
+        r = self.status.rec
+        r.mic, r.recording = self.mic, self.rec.recording
+        r.elapsed, r.level_db, r.peak_db = self.rec.elapsed, self.rec.level_db, self.rec.peak_db
+        r.max_seconds = self.rec.max_seconds
+        r.notice = self.notice if self.clock() < self.notice_until else ""
+        r.clips, r.browsing, r.cursor = self.clips, self.browsing, self.cursor
+        r.playing = self.player.playing
+        tag = self.weather_tag() if not r.recording or not r.tag else None
+        if tag is not None or not r.recording:
+            r.tag = tag_text(tag)
 
     # ---- data --------------------------------------------------------
 
@@ -162,7 +279,7 @@ class App:
 
     def check_rain_alert(self):
         w = self.view()
-        if not w:
+        if not w or self.rec.recording:     # looked at again on the next fetch
             return
         kind, mins = w.rain_eta()
         if kind == "dry":
@@ -175,7 +292,7 @@ class App:
 
     def check_battery_alert(self):
         pct, charging = self.status.battery, self.status.charging
-        if pct is None:
+        if pct is None or self.rec.recording:   # looked at again on the next poll
             return
         if charging:
             self.battery_warned.clear()
@@ -193,11 +310,17 @@ class App:
         now = self.clock()
         if self.weather:
             self.status.stale_minutes = self.weather.age_minutes(now)
+        busy = self.rec.recording or self.player.playing
+        if busy:
+            self.last_input = now
         if not self.saver and now - self.last_input >= self.cfg.saver_after:
             self.saver = True
+            self.browsing = False
         if self.saver:
             return render.screensaver(w, self.local_now(), int(now // 60))
-        if w is None:
+        self.status.now = self.local_now()
+        self.rec_view()
+        if w is None and self.names[self.page] not in ("record", "clips"):
             return render.message("Weather", "Fetching forecast\nfor %s..." % self.cfg.place +
                                   ("\n" + self.status.error if self.status.error else ""))
         return render.PAGES[self.page][1](w, self.status)
@@ -220,12 +343,22 @@ class App:
             pressed = True
         self.check_hold()
         self.poll_battery()
-        # buttons redraw at once; otherwise once a second is plenty for a clock
+        self.poll_mic()
+        # buttons redraw at once; otherwise once a second is plenty for a clock,
+        # but the level meter needs five
         now = self.clock()
-        if pressed or self._dirty or now - self._last_draw >= 1.0:
+        interval = 0.2 if self.rec.recording else 1.0
+        if pressed or self._dirty or now - self._last_draw >= interval:
             self._dirty = False
             self._last_draw = now
             self.draw()
+
+
+def tag_text(tag: Optional[dict]) -> str:
+    if not tag:
+        return ""
+    return "%s%s %d°%s" % ("~" if tag["source"] == "forecast" else "", tag["conditions"],
+                           round(tag["temp"]), " (forecast)" if tag["source"] == "forecast" else "")
 
 
 # ---- fetching -----------------------------------------------------------------
@@ -268,6 +401,7 @@ def fetcher(app: App):
         try:
             if place is None:
                 place = resolve_place(app.cfg)
+                app.place_info = place
             lat, lon, name = place
             j = forecast.fetch(lat, lon)
             app.set_weather(forecast.Weather.from_api(j, name))
@@ -369,6 +503,10 @@ def main(argv: Optional[List[str]] = None):
             app.tick()
             time.sleep(0.05)
     finally:
+        if app.rec.recording:   # a Cancel-hold or shutdown mid-clip still saves it
+            app.rec.stop()
+            app.rec.wait(5)
+        app.player.stop()
         spk.stop()
         hw.close()   # the pi-top system menu takes the screen back from here
 

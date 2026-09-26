@@ -233,8 +233,30 @@ class Weather:
         target = (self.now + timedelta(days=1)).date()
         return next((d for d in self.days if d.date.date() == target), None)
 
+    def conditions_at(self, now: datetime, now_epoch: Optional[float] = None) -> Optional[dict]:
+        """The weather to label a recording with.
+
+        A fresh fetch has real "current" readings. Out on a walk there is
+        usually no Wi-Fi, so after half an hour the best we have is the
+        forecast for that hour, and the tag says so."""
+        age = self.age_minutes(now_epoch)
+        if age < 30:
+            return {"source": "observed", "temp": self.temp, "feels": self.feels,
+                    "conditions": self.text, "code": self.code, "wind_mph": self.wind,
+                    "wind_from": compass(self.wind_dir), "gust_mph": self.gust,
+                    "pressure_hpa": self.pressure, "humidity": self.humidity,
+                    "forecast_age_min": age}
+        near = [h for h in self.hours if abs((h.time - now).total_seconds()) <= 45 * 60]
+        if not near:
+            return None     # the saved forecast doesn't reach this far
+        h = min(near, key=lambda h: abs((h.time - now).total_seconds()))
+        return {"source": "forecast", "temp": h.temp, "conditions": describe(h.code)[0],
+                "code": h.code, "wind_mph": h.wind, "pressure_hpa": h.pressure,
+                "rain_chance": h.pop, "forecast_age_min": age}
+
     def age_minutes(self, now_epoch: Optional[float] = None) -> int:
-        return int(((now_epoch or time.time()) - self.fetched_at) // 60)
+        now_epoch = time.time() if now_epoch is None else now_epoch
+        return int((now_epoch - self.fetched_at) // 60)
 
 
 def _round5(m: int) -> int:

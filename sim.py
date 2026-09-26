@@ -66,6 +66,41 @@ def sheet(frames, title):
     return out
 
 
+def recorder_sheet(w, out):
+    """The Record and Clips pages in each of their states."""
+    from pitop_weather import recorder
+    now = datetime(2026, 9, 27, 7, 12)
+
+    def clip(d, h, m, sec, cond, t):
+        return recorder.Clip("/x/%d%d%d.wav" % (d, h, m), {
+            "started": "2026-09-%02dT%02d:%02d:00" % (d, h, m), "seconds": sec,
+            "weather": {"conditions": cond, "temp": t}})
+    clips = [clip(27, 7, 12, 58, "Light rain", 14), clip(27, 6, 55, 60, "Overcast", 13),
+             clip(27, 6, 40, 22.5, "Fog", 11), clip(26, 18, 31, 60, "Mostly clear", 10),
+             clip(26, 18, 20, 41, "Clear", 9)]
+
+    def st(**r):
+        return render.Status(battery=64, stale_minutes=70, now=now, rec=render.RecView(**r))
+    mic, tag = "USB PnP Sound Device", "~Light rain 14° (forecast)"
+    frames = [
+        ("record: no mic", render.page_record(w, st(mic=None))),
+        ("record: ready", render.page_record(w, st(mic=mic, tag=tag, clips=clips, free_minutes=17000))),
+        ("record: recording", render.page_record(w, st(mic=mic, recording=True, elapsed=23.4,
+                                                       level_db=-18, peak_db=-9, tag=tag))),
+        ("record: loud", render.page_record(w, st(mic=mic, recording=True, elapsed=41.9,
+                                                  level_db=-2, peak_db=-0.5, tag="Heavy rain 9°"))),
+        ("record: saved", render.page_record(w, st(mic=mic, notice="Saved 0:58", tag=tag, clips=clips,
+                                                   free_minutes=17000))),
+        ("clips: summary", render.page_clips(w, st(clips=clips))),
+        ("clips: browsing", render.page_clips(w, st(clips=clips, browsing=True, cursor=3,
+                                                    playing="/x/261831.wav"))),
+        ("clips: none", render.page_clips(w, st(clips=[]))),
+    ]
+    path = os.path.join(out, "recorder.png")
+    sheet(frames, "recorder pages").save(path)
+    print(path)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--live", metavar="PLACE")
@@ -89,6 +124,7 @@ def main():
         path = os.path.join(a.out, n.split(" ")[0].replace(",", "") + ".png")
         sheet(frames, "%s  -  %s" % (n, w.now.strftime("%a %H:%M"))).save(path)
         print(path)
+    recorder_sheet(w, a.out)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -38,6 +38,26 @@ class Status:
     ip: str = ""
     stale_minutes: Optional[int] = None  # age of the forecast
     error: str = ""
+    now: Optional[datetime] = None       # local time, for pages that work without a forecast
+    rec: Optional["RecView"] = None
+
+
+@dataclass
+class RecView:
+    """Everything the Record and Clips pages need to know."""
+    mic: Optional[str] = None
+    recording: bool = False
+    elapsed: float = 0.0
+    max_seconds: float = 60
+    level_db: float = -60.0
+    peak_db: float = -60.0
+    tag: str = ""                 # the weather the next clip will be labelled with
+    notice: str = ""              # "Saved 0:58" / an error, shown for a few seconds
+    free_minutes: Optional[int] = None
+    clips: list = field(default_factory=list)
+    browsing: bool = False
+    cursor: int = 0
+    playing: Optional[str] = None
 
 
 def new() -> "tuple[Image.Image, ImageDraw.ImageDraw]":
@@ -78,9 +98,9 @@ def battery_icon(d, x: int, y: int, st: Status):
         d.line([(x + 7, y + 1), (x + 5, y + 4), (x + 7, y + 4), (x + 6, y + 6)], fill=1)
 
 
-def header(d, title: str, w: Weather, st: Status):
+def header(d, title: str, now: datetime, st: Status):
     d.text((0, -1), title, font=font(9, True), fill=1)
-    clock = w.now.strftime("%H:%M")
+    clock = now.strftime("%H:%M")
     f = font(9)
     cw = text_w(d, clock, f)
     x_batt = W - 14
@@ -166,7 +186,7 @@ def draw_icon(d, kind: str, x: int, y: int, s: int, night: bool = False):
 
 def page_now(w: Weather, st: Status) -> Image.Image:
     img, d = new()
-    header(d, w.place[:12], w, st)
+    header(d, w.place[:12], w.now, st)
     draw_icon(d, w.icon, 0, 13, 32, night=not w.is_day)
     t = deg(w.temp)
     d.text((36, 10), t, font=font(26, True), fill=1)
@@ -184,7 +204,7 @@ def page_now(w: Weather, st: Status) -> Image.Image:
 def page_next(w: Weather, st: Status) -> Image.Image:
     """The next three hours, side by side."""
     img, d = new()
-    header(d, "Next hours", w, st)
+    header(d, "Next hours", w.now, st)
     hrs = w.upcoming_hours(3)
     col = W // 3
     for i, hr in enumerate(hrs):
@@ -208,7 +228,7 @@ def page_next(w: Weather, st: Status) -> Image.Image:
 def page_rain(w: Weather, st: Status) -> Image.Image:
     """Rainfall per 15 minutes over the next two hours."""
     img, d = new()
-    header(d, "Rain radar", w, st)
+    header(d, "Rain radar", w.now, st)
     kind, mins = w.rain_eta()
     if kind == "dry":
         msg = "Dry for 2 hours"
@@ -243,7 +263,7 @@ def page_rain(w: Weather, st: Status) -> Image.Image:
 
 def page_wind(w: Weather, st: Status) -> Image.Image:
     img, d = new()
-    header(d, "Wind", w, st)
+    header(d, "Wind", w.now, st)
     cx, cy, r = 25, 38, 23
     d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=1)
     for i, lab in enumerate("NESW"):
@@ -272,7 +292,7 @@ def page_wind(w: Weather, st: Status) -> Image.Image:
 
 def page_sun(w: Weather, st: Status) -> Image.Image:
     img, d = new()
-    header(d, "Sun", w, st)
+    header(d, "Sun", w.now, st)
     day = w.today
     if day is None:
         d.text((0, 25), "No data", font=font(11), fill=1)
@@ -315,7 +335,7 @@ def uv_word(uv: float) -> str:
 
 def page_pressure(w: Weather, st: Status) -> Image.Image:
     img, d = new()
-    header(d, "Pressure", w, st)
+    header(d, "Pressure", w.now, st)
     delta, word = w.pressure_trend()
     p = "%d" % round(w.pressure)
     d.text((0, 11), p, font=font(18, True), fill=1)
@@ -374,7 +394,7 @@ def barometer_word(p: float, delta: float) -> str:
 def page_tomorrow(w: Weather, st: Status) -> Image.Image:
     img, d = new()
     tm = w.tomorrow
-    header(d, "Tomorrow", w, st)
+    header(d, "Tomorrow", w.now, st)
     if tm is None:
         d.text((0, 25), "No data", font=font(11), fill=1)
         return img
@@ -391,7 +411,7 @@ def page_tomorrow(w: Weather, st: Status) -> Image.Image:
 
 def page_device(w: Weather, st: Status) -> Image.Image:
     img, d = new()
-    header(d, "Device", w, st)
+    header(d, "Device", w.now, st)
     if st.battery is None:
         bl = "Battery ?"
     else:
@@ -414,8 +434,108 @@ def page_device(w: Weather, st: Status) -> Image.Image:
     return img
 
 
+def mmss(sec: float) -> str:
+    sec = int(sec)
+    return "%d:%02d" % (sec // 60, sec % 60)
+
+
+def level_bar(d, x0, y0, x1, y1, level_db, peak_db, floor=-60.0):
+    """A horizontal meter: filled to the current level, a tick at the peak."""
+    d.rectangle([x0, y0, x1, y1], outline=1)
+    span = x1 - x0 - 2
+
+    def pos(v):
+        return x0 + 1 + int(span * (max(floor, min(0.0, v)) - floor) / -floor)
+    lv = pos(level_db)
+    if lv > x0 + 1:
+        d.rectangle([x0 + 1, y0 + 1, lv, y1 - 1], fill=1)
+    pk = pos(peak_db)
+    d.line([(pk, y0 - 2), (pk, y1 + 2)], fill=1)
+    for db_mark in (-40, -20, -6):     # scale ticks under the bar
+        x = pos(db_mark)
+        d.point((x, y1 + 2), fill=1)
+
+
+def page_record(w: Optional[Weather], st: Status) -> Image.Image:
+    img, d = new()
+    r = st.rec or RecView()
+    header(d, "Record", st.now or w.now, st)
+    if r.recording:
+        # a blinking dot, the timer, and the meter
+        if int(r.elapsed * 2) % 2 == 0:
+            d.ellipse([0, 14, 8, 22], fill=1)
+        d.text((12, 11), mmss(r.elapsed), font=font(14, True), fill=1)
+        rest = "/ " + mmss(r.max_seconds)
+        d.text((12 + text_w(d, mmss(r.elapsed), font(14, True)) + 3, 16), rest, font=font(9), fill=1)
+        level_bar(d, 0, 32, W - 1, 40, r.level_db, r.peak_db)
+        if r.peak_db >= -1:
+            d.text((W - text_w(d, "LOUD", font(8, True)), 12), "LOUD", font=font(8, True), fill=1)
+        d.text((0, 43), r.tag or "no weather tag", font=fit(d, r.tag or "no weather tag", 9, W), fill=1)
+        d.text((0, 53), "Select: stop", font=font(8), fill=1)
+        return img
+    if not r.mic:
+        d.text((0, 12), "No microphone", font=font(12, True), fill=1)
+        d.text((0, 28), "Plug in a USB mic;", font=font(9), fill=1)
+        d.text((0, 39), "it's found by itself.", font=font(9), fill=1)
+        if r.notice:
+            d.text((0, 53), r.notice, font=fit(d, r.notice, 9, W), fill=1)
+        return img
+    mic = r.mic
+    d.text((0, 11), mic, font=fit(d, mic, 9, W), fill=1)
+    if r.notice:
+        d.text((0, 23), r.notice, font=fit(d, r.notice, 12, W, True), fill=1)
+    else:
+        msg = "Select: record %s" % mmss(r.max_seconds)
+        d.text((0, 23), msg, font=fit(d, msg, 12, W, True), fill=1)
+    tag = r.tag or "no weather yet"
+    d.text((0, 39), tag, font=fit(d, tag, 9, W), fill=1)
+    today = sum(1 for c in r.clips if st.now and c.when.date() == st.now.date())
+    info = "%d today, %d in all" % (today, len(r.clips))
+    if r.free_minutes is not None:
+        info += "  %dh free" % (r.free_minutes // 60)
+    d.text((0, 52), info, font=fit(d, info, 9, W), fill=1)
+    return img
+
+
+def page_clips(w: Optional[Weather], st: Status) -> Image.Image:
+    img, d = new()
+    r = st.rec or RecView()
+    header(d, "Clips", st.now or w.now, st)
+    if not r.clips:
+        d.text((0, 14), "No clips yet", font=font(12, True), fill=1)
+        d.text((0, 32), "Record some on the", font=font(9), fill=1)
+        d.text((0, 43), "Record page.", font=font(9), fill=1)
+        return img
+    if not r.browsing:
+        last = r.clips[0]
+        d.text((0, 11), "%d clip%s" % (len(r.clips), "" if len(r.clips) == 1 else "s"), font=font(12, True), fill=1)
+        d.text((0, 26), "Latest: " + last.when.strftime("%a %d %b %H:%M"), font=fit(d, "Latest: " + last.when.strftime("%a %d %b %H:%M"), 9, W), fill=1)
+        d.text((0, 37), last.label, font=fit(d, last.label, 9, W), fill=1)
+        d.text((0, 52), "Select: browse & play", font=font(8), fill=1)
+        return img
+    rows, rh = 4, 13
+    first = max(0, min(r.cursor - 1, len(r.clips) - rows))
+    for i, c in enumerate(r.clips[first:first + rows]):
+        idx = first + i
+        y = 11 + i * rh
+        sel = idx == r.cursor
+        if sel:
+            d.rectangle([0, y, W - 1, y + rh - 1], fill=1)
+        mark = ">" if r.playing == c.wav else ""
+        same_day = st.now is not None and c.when.date() == st.now.date()
+        when = c.when.strftime("%H:%M" if same_day else "%a %H:%M")
+        left = "%s%s" % (mark, when)
+        d.text((1, y), left, font=font(9, True), fill=0 if sel else 1)
+        rest = "%s %s" % (mmss(c.seconds), c.label)
+        x = 3 + text_w(d, left, font(9, True)) + 3
+        d.text((x, y + 1), rest, font=fit(d, rest, 8, W - x), fill=0 if sel else 1)
+    return img
+
+
 PAGES = [
     ("now", page_now),
+    ("record", page_record),
+    ("clips", page_clips),
     ("next", page_next),
     ("rain", page_rain),
     ("wind", page_wind),

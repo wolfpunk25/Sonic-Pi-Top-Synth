@@ -2,10 +2,11 @@
 import copy
 import json
 import os
+import tempfile
 import unittest
 from datetime import datetime, time as dtime, timedelta
 
-from pitop_weather import app, forecast, render, speech
+from pitop_weather import app, forecast, recorder, render, speech
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SAMPLE = json.load(open(os.path.join(HERE, "sample_london.json")))
@@ -59,14 +60,55 @@ class Clock:
         return self.t
 
 
-def make_app(local=NIGHT, **cfg):
+class FakeSource:
+    """A mic that yields `seconds` of a quiet tone, or nothing at all."""
+
+    def __init__(self, seconds, rate=8000, amplitude=3000):
+        import math
+        import struct
+        n = int(seconds * rate)
+        self.data = b"".join(struct.pack("<h", int(amplitude * math.sin(i / 5.0))) for i in range(n))
+        self.pos = 0
+        self.closed = False
+
+    def read(self, n):
+        chunk = self.data[self.pos:self.pos + n]
+        self.pos += len(chunk)
+        return chunk
+
+    def close(self):
+        self.closed = True
+
+
+class FakePlayer:
+    def __init__(self):
+        self.playing = None
+        self.played = []
+
+    def play(self, path):
+        self.playing = path
+        self.played.append(path)
+
+    def stop(self):
+        self.playing = None
+
+
+def make_app(local=NIGHT, mic="Fake USB Mic", source_seconds=3.0, **cfg):
     c = app.Config(None)
     c.quiet_from = c.quiet_until = dtime(0, 0)   # never quiet unless a test says so
+    c.rec_folder = tempfile.mkdtemp(prefix="soundwalks-")
     for k, v in cfg.items():
         setattr(c, k, v)
     hw, spk, clk = FakeHW(), FakeSpeaker(), Clock()
-    a = app.App(hw, c, spk, clock=clk, local_now=lambda: local)
+    rec = recorder.Recorder(c.rec_folder, rate=8000, max_seconds=c.rec_seconds,
+                            source_factory=lambda: FakeSource(source_seconds))
+    a = app.App(hw, c, spk, clock=clk, local_now=lambda: local, rec=rec,
+                player=FakePlayer(), find_mic=lambda: mic)
     return a, hw, spk, clk
+
+
+def goto(a, page):
+    a.page = a.names.index(page)
 
 
 def press(a, name, clk=None, hold=0.0):
@@ -145,6 +187,8 @@ class TestSpeech(unittest.TestCase):
         st = render.Status(battery=40, minutes_left=95)
         for w in (weather(), weather(now=AFTERNOON), weather(with_rain([0, 0, 1, 1, 0, 0, 0, 0, 0]))):
             for name, _ in render.PAGES:
+                if name in ("record", "clips"):     # Select records/browses there
+                    continue
                 s = speech.SAY[name](w, st)
                 self.assertTrue(s and s.endswith("."), (name, s))
                 self.assertNotIn("°", s)
@@ -162,7 +206,7 @@ class TestApp(unittest.TestCase):
         a, hw, spk, clk = make_app()
         a.set_weather(weather())
         press(a, "down")
-        self.assertEqual(a.names[a.page], "next")
+        self.assertEqual(a.names[a.page], "record")
         press(a, "up")
         press(a, "up")
         self.assertEqual(a.names[a.page], "device")
@@ -173,8 +217,7 @@ class TestApp(unittest.TestCase):
     def test_select_speaks_the_page(self):
         a, hw, spk, clk = make_app()
         a.set_weather(weather())
-        press(a, "down")
-        press(a, "down")
+        goto(a, "rain")
         press(a, "select")
         self.assertEqual(spk.said[-1], speech.say_rain(a.view(), a.status))
 
@@ -195,7 +238,7 @@ class TestApp(unittest.TestCase):
         self.assertTrue(a.saver)
         press(a, "down")                # wakes, does NOT change page
         self.assertFalse(a.saver)
-        self.assertEqual(a.names[a.page], "next")
+        self.assertEqual(a.names[a.page], "record")
 
     def test_redraw_is_throttled_but_buttons_are_instant(self):
         a, hw, spk, clk = make_app()
@@ -290,3 +333,187 @@ class TestApp(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRecorder(unittest.TestCase):
+    def test_clip_is_saved_with_its_label(self):
+        folder = tempfile.mkdtemp()
+        r = recorder.Recorder(folder, rate=8000, max_seconds=60, source_factory=lambda: FakeSource(2.0))
+        done = []
+        r.on_done = lambda clip, err: done.append((clip, err))
+        tag = weather().conditions_at(NIGHT, 0)
+        r.start(NIGHT, {"weather": tag})
+        r.wait(5)
+        clip, err = done[0]
+        self.assertEqual(err, "")
+        self.assertTrue(clip.wav.endswith("232900-partly-cloudy-16c.wav"), clip.wav)
+        import wave
+        with wave.open(clip.wav) as wf:
+            self.assertEqual((wf.getnchannels(), wf.getframerate(), wf.getnframes()), (1, 8000, 16000))
+        meta = json.load(open(clip.wav[:-4] + ".json"))
+        self.assertEqual(meta["seconds"], 2.0)
+        self.assertEqual(meta["weather"]["source"], "observed")
+        self.assertLess(meta["peak_dbfs"], -10)
+        self.assertEqual([c.wav for c in recorder.list_clips(folder)], [clip.wav])
+        self.assertEqual(os.listdir(os.path.dirname(clip.wav)).count(os.path.basename(clip.wav) + ".part"), 0)
+
+    def test_stops_at_the_limit(self):
+        folder = tempfile.mkdtemp()
+        src = FakeSource(10.0)
+        r = recorder.Recorder(folder, rate=8000, max_seconds=1.5, source_factory=lambda: src)
+        done = []
+        r.on_done = lambda clip, err: done.append(clip)
+        r.start(NIGHT, {})
+        r.wait(5)
+        self.assertEqual(done[0].seconds, 1.5)
+        self.assertTrue(src.closed)
+
+    def test_silent_mic_saves_nothing(self):
+        folder = tempfile.mkdtemp()
+        r = recorder.Recorder(folder, rate=8000, source_factory=lambda: FakeSource(0))
+        done = []
+        r.on_done = lambda clip, err: done.append((clip, err))
+        r.start(NIGHT, {})
+        r.wait(5)
+        self.assertIsNone(done[0][0])
+        self.assertIn("No sound", done[0][1])
+
+    def test_a_tap_is_too_short(self):
+        folder = tempfile.mkdtemp()
+        r = recorder.Recorder(folder, rate=8000, source_factory=lambda: FakeSource(0.2))
+        done = []
+        r.on_done = lambda clip, err: done.append((clip, err))
+        r.start(NIGHT, {})
+        r.wait(5)
+        self.assertEqual(done[0], (None, "Too short, not kept"))
+        self.assertEqual(recorder.list_clips(folder), [])
+        self.assertEqual(sum(len(f) for _, _, f in os.walk(folder)), 0)
+
+    def test_names(self):
+        self.assertEqual(recorder.clip_basename(NIGHT, {"temp": -2.6, "conditions": "Light snow"}),
+                         "232900-light-snow-m3c")
+        self.assertEqual(recorder.clip_basename(NIGHT, None), "232900")
+
+    def test_parse_arecord_list(self):
+        out = ("**** List of CAPTURE Hardware Devices ****\n"
+               "card 3: Device [USB PnP Sound Device], device 0: USB Audio [USB Audio]\n")
+        self.assertEqual(recorder.parse_arecord_list(out), "USB PnP Sound Device")
+        self.assertIsNone(recorder.parse_arecord_list("**** List of CAPTURE Hardware Devices ****\n"))
+
+
+class TestWeatherTag(unittest.TestCase):
+    def test_fresh_forecast_is_observed(self):
+        self.assertEqual(weather().conditions_at(NIGHT, 60 * 10)["source"], "observed")
+
+    def test_old_forecast_falls_back_to_that_hour(self):
+        w = weather()
+        t = w.conditions_at(NIGHT + timedelta(hours=3), 60 * 60 * 3)
+        self.assertEqual(t["source"], "forecast")
+        self.assertIn("rain_chance", t)
+
+    def test_beyond_the_forecast_is_none(self):
+        self.assertIsNone(weather().conditions_at(NIGHT + timedelta(days=3), 3 * 86400))
+
+
+class TestRecordingInApp(unittest.TestCase):
+    def record(self, a, clk):
+        goto(a, "record")
+        press(a, "select")
+        self.assertTrue(a.rec.recording or a.rec._thread)
+        a.rec.wait(5)
+        a.tick()
+
+    def test_select_on_record_page_records_a_tagged_clip(self):
+        a, hw, spk, clk = make_app()
+        a.set_weather(weather())
+        self.record(a, clk)
+        self.assertEqual(len(a.clips), 1)
+        meta = a.clips[0].meta
+        self.assertEqual(meta["weather"]["conditions"], "Partly cloudy")
+        self.assertEqual(meta["mic"], "Fake USB Mic")
+        self.assertEqual(spk.said[-1], "Saved, 3 seconds.")
+        self.assertTrue(a.status.rec.notice.startswith("Saved"))
+
+    def test_records_without_any_forecast(self):
+        a, hw, spk, clk = make_app()
+        self.record(a, clk)
+        self.assertEqual(len(a.clips), 1)
+        self.assertIsNone(a.clips[0].meta["weather"])
+
+    def test_no_mic(self):
+        a, hw, spk, clk = make_app(mic=None)
+        goto(a, "record")
+        press(a, "select")
+        self.assertFalse(a.rec.recording)
+        self.assertEqual(a.status.rec.notice, "No microphone found")
+
+    def test_nothing_speaks_while_recording(self):
+        a, hw, spk, clk = make_app(source_seconds=30)
+        a.set_weather(weather())
+        goto(a, "record")
+        threading = __import__("threading")
+        gate, holding = threading.Event(), threading.Event()
+        orig = a.rec.source_factory
+        class Slow:
+            """A second of audio at once, then waits like a real mic would."""
+            def __init__(s):
+                s.src, s.reads = orig(), 0
+            def read(s, n):
+                s.reads += 1
+                if s.reads > 10:
+                    holding.set()
+                    gate.wait(5)
+                return s.src.read(n)
+            def close(s): s.src.close()
+        a.rec.source_factory = Slow
+        press(a, "select")
+        self.assertTrue(holding.wait(5))    # a second is in, and the "mic" is now live
+        self.assertTrue(a.rec.recording)
+        a.set_weather(weather(with_rain([0, 0, 0, 0.5, 1, 1, 0, 0, 0])))
+        hw.batt = (5, False, 10)
+        clk.t += 31
+        a.tick()
+        self.assertEqual(spk.said, [])
+        self.assertEqual(a.names[a.page], "record")
+        press(a, "down")                 # ignored while recording
+        self.assertEqual(a.names[a.page], "record")
+        press(a, "select")               # stops
+        gate.set()
+        a.rec.wait(5)
+        self.assertFalse(a.rec.recording)
+        self.assertEqual(len(a.clips), 1)
+        # the deferred alerts come through afterwards
+        a.set_weather(weather(with_rain([0, 0, 0, 0.5, 1, 1, 0, 0, 0])))
+        clk.t += 31
+        a.tick()
+        self.assertTrue(any(x.startswith("Heads up") for x in spk.said))
+        self.assertTrue(any(x.startswith("Battery") for x in spk.said))
+
+    def test_browse_and_play(self):
+        a, hw, spk, clk = make_app()
+        self.record(a, clk)
+        clk.t += 1
+        self.record(a, clk)   # same second on the fake clock: must not overwrite
+        self.assertEqual(len(a.clips), 2, [c.wav for c in a.clips])
+        goto(a, "clips")
+        press(a, "select")
+        self.assertTrue(a.browsing)
+        press(a, "down")
+        self.assertEqual(a.cursor, 1)
+        press(a, "select")
+        self.assertEqual(a.player.playing, a.clips[1].wav)
+        press(a, "select")
+        self.assertIsNone(a.player.playing)
+        press(a, "cancel", clk, 0.1)
+        self.assertFalse(a.browsing)
+        self.assertEqual(a.names[a.page], "clips")
+
+    def test_record_and_clip_pages_render(self):
+        a, hw, spk, clk = make_app()
+        for page in ("record", "clips"):
+            goto(a, page)
+            self.assertTrue(a.frame().getbbox())
+        self.record(a, clk)
+        goto(a, "clips")
+        press(a, "select")
+        self.assertTrue(a.frame().getbbox())
