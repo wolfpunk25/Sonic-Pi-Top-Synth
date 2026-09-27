@@ -83,7 +83,7 @@ Keys (Prophet) · Chords · Echo keys · Harmony · Strummer · Bells · Piano �
 Deep bass · Tech saws
 
 **Sequencers** (they play by themselves, and your notes steer them)
-Arpeggio · Acid bass · Loop what you play · Evolving sequencer · Copycat · Euclid garden · Cellular · Phase
+Arpeggio · Acid bass · Loop what you play (play a phrase, pause, and it loops in your rhythm) · Evolving sequencer · Copycat · Euclid garden · Cellular · Phase
 
 **Grooves** (a beat to play over)
 Beat and keys · Chiptune · Finger drums · Dub stabs · Late night jazz
