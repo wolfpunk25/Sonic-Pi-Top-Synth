@@ -26,7 +26,17 @@ bind /home
 bind /tmp
 bind "/run/user/$U"
 
-exec sudo chroot --userspec="$U:$G" "$ROOT" /usr/bin/env -i \
+# Real-time priority: going through sudo drops the user's RLIMIT_RTPRIO to
+# 0, so Sonic Pi's audio thread (and PipeWire's thread inside it) couldn't
+# get real-time scheduling and ran at normal priority - any busy moment
+# elsewhere on the Pi made it miss its 2.7 ms deadline, which you hear as
+# a crackle. Raise the limits as root, then drop to the user. 95 matches
+# what the system gives the pipewire group.
+# PITOP_NO_RT=1 skips this, only so tools/crackle_check.py can compare.
+RT='ulimit -r 95 && ulimit -l unlimited && '
+[ -n "$PITOP_NO_RT" ] && RT=''
+exec sudo sh -c "$RT"'exec "$@"' sh \
+    chroot --userspec="$U:$G" "$ROOT" /usr/bin/env -i \
     HOME="$HOME" USER="$(id -un)" LANG=C.UTF-8 \
     PATH=/usr/local/bin:/usr/bin:/bin \
     XDG_RUNTIME_DIR="/run/user/$U" \
