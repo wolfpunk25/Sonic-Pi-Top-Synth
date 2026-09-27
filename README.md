@@ -126,9 +126,24 @@ and `hostname` plugins, so controllers connected but no MIDI port appeared. `ins
 `/etc/systemd/system/bluetooth.service.d/20-midi.conf` (`bluetooth-midi.conf` here), with the same command line
 plus `midi`. Delete it to undo.
 
-Tested: an ESP32 box with Arduino BLE MIDI connected first time and reconnected by itself after a deliberate
-disconnect. A CircuitPython (`adafruit_ble_midi`) controller connects but often drops straight away (bluetoothd:
-"MIDI I/O: Failed to read initial request"). That one is unresolved.
+It is also the **pairing agent**. It approves "Just Works" pairing for devices that advertise MIDI and refuses
+everything else. Some controllers (anything using Adafruit's `adafruit_ble_midi`, for example) only let an encrypted,
+paired link read the MIDI characteristic. BlueZ then starts pairing, and with no agent it asks nobody, so the pairing
+fails and the link drops. After the first pairing they are bonded and reconnect encrypted straight away.
+
+Tested: an ESP32 box with Arduino BLE MIDI connected first time and reconnected by itself. A CircuitPython ESP32
+controller (`adafruit_ble_midi`) needed three fixes, all found with `btmon`:
+
+1. **"Connection Timeout" about 1 s in.** BlueZ's LE supervision timeout is 420 ms, so a slow peripheral that
+   missed about 8 connection events was dropped. Raised to 4 s (see below).
+2. **Scanning during the connection.** The service now stops scanning *before* connecting, not afterwards.
+3. **"Insufficient Authentication" on the MIDI read.** Pairing was needed and nobody approved it; the agent now does.
+
+**Supervision timeout:** `/etc/bluetooth/main.conf`, `[LE]`, `ConnectionSupervisionTimeout = 400` (in 10 ms units,
+so 4 s). For a one-off test until reboot: `echo 400 | sudo tee /sys/kernel/debug/bluetooth/hci0/supervision_timeout`.
+
+If a controller is also paired with a Mac, the Mac reconnects to it whenever it can, and the two take turns
+grabbing it. Disconnect it in Audio MIDI Setup's Bluetooth window when you want the pi-top to have it.
 
 ## Alerts
 

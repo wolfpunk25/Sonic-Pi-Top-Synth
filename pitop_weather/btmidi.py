@@ -13,6 +13,11 @@ which Sonic Pi picks up by itself. No pairing is needed.
     as a CircuitPython controller here does - is retried with a growing gap
     (5 s up to 2 min), so a misbehaving controller can't hog the radio.
   * The adapter is powered on at start and whenever it turns off.
+  * It is the pairing agent, and approves "Just Works" pairing - but only
+    for devices advertising MIDI. Some controllers (adafruit_ble_midi, as in
+    the CircuitPython Wolfpunk) require an encrypted link to read the MIDI
+    characteristic; BlueZ then pairs, and with no agent registered it asks
+    nobody, so pairing fails and the link drops.
 
 Needs /etc/systemd/system/bluetooth.service.d/20-midi.conf (bluetoothd started
 with the midi plugin); without it devices connect but no MIDI port appears.
@@ -31,6 +36,8 @@ ADAPTER = "org.bluez.Adapter1"
 DEVICE = "org.bluez.Device1"
 PROPS = "org.freedesktop.DBus.Properties"
 OM = "org.freedesktop.DBus.ObjectManager"
+AGENT_MANAGER = "org.bluez.AgentManager1"
+AGENT_PATH = "/uk/fangrock/pitop/btmidi_agent"
 
 MIN_BACKOFF, MAX_BACKOFF = 5.0, 120.0
 STABLE_AFTER = 30.0       # a connection only counts as good once it has lasted this long
@@ -77,6 +84,61 @@ def ignored_names(path=os.path.expanduser("~/.config/pitop-weather.ini")):
     return {n.strip().lower() for n in raw.split(",") if n.strip()}
 
 
+def make_agent(dbus, bus, is_midi_path):
+    """A pairing agent with no display or keyboard: it approves Just Works
+    pairing for MIDI devices and refuses everything else (no PINs, no
+    passkeys, nothing that isn't a MIDI controller)."""
+    import dbus.service
+
+    class Rejected(dbus.DBusException):
+        _dbus_error_name = "org.bluez.Error.Rejected"
+
+    class Agent(dbus.service.Object):
+        def _check(self, device):
+            if not is_midi_path(str(device)):
+                log("refused pairing with %s (not a MIDI device)" % device)
+                raise Rejected("not a MIDI device")
+            log("approved pairing with %s" % device)
+
+        @dbus.service.method("org.bluez.Agent1", in_signature="", out_signature="")
+        def Release(self):
+            pass
+
+        @dbus.service.method("org.bluez.Agent1", in_signature="o", out_signature="")
+        def RequestAuthorization(self, device):
+            self._check(device)
+
+        @dbus.service.method("org.bluez.Agent1", in_signature="ou", out_signature="")
+        def RequestConfirmation(self, device, passkey):
+            self._check(device)
+
+        @dbus.service.method("org.bluez.Agent1", in_signature="os", out_signature="")
+        def AuthorizeService(self, device, uuid):
+            self._check(device)
+
+        @dbus.service.method("org.bluez.Agent1", in_signature="o", out_signature="s")
+        def RequestPinCode(self, device):
+            raise Rejected("no PIN entry")
+
+        @dbus.service.method("org.bluez.Agent1", in_signature="o", out_signature="u")
+        def RequestPasskey(self, device):
+            raise Rejected("no passkey entry")
+
+        @dbus.service.method("org.bluez.Agent1", in_signature="ouq", out_signature="")
+        def DisplayPasskey(self, device, passkey, entered):
+            pass
+
+        @dbus.service.method("org.bluez.Agent1", in_signature="os", out_signature="")
+        def DisplayPinCode(self, device, pincode):
+            pass
+
+        @dbus.service.method("org.bluez.Agent1", in_signature="", out_signature="")
+        def Cancel(self):
+            pass
+
+    return Agent(bus, AGENT_PATH)
+
+
 class AutoConnect:
     def __init__(self):
         import dbus
@@ -92,6 +154,7 @@ class AutoConnect:
         self.ignore = ignored_names()
         self.adapter_path = None
         self.scanning = False
+        self.agent = None
 
     # -- bluez helpers
 
@@ -144,6 +207,10 @@ class AutoConnect:
             return
         self.pending.add(path)
         self.backoff.attempted(path)
+        # stop scanning first: the Pi has one radio, and scanning through the
+        # first seconds of a connection makes a slow peripheral miss enough
+        # connection events to hit BlueZ's 420 ms supervision timeout
+        self.set_scanning(False)
         log("connecting to %s" % name)
         dev = self.dbus.Interface(self.bus.get_object(BLUEZ, path), DEVICE)
 
@@ -179,7 +246,7 @@ class AutoConnect:
                         log("%s dropped after %.0f s; next try in %.0f s" % (d.get("Name", p), lasted, gap))
                     else:
                         log("%s disconnected" % d.get("Name", p))
-            self.set_scanning(not connected)
+            self.set_scanning(not connected and not self.pending)
             for p, d in devices:
                 if not d.get("Connected"):
                     self.connect(p, d)
@@ -188,8 +255,28 @@ class AutoConnect:
             self.adapter_path, self.scanning = None, False   # bluetoothd restarted: start over
         return True
 
+    def is_midi_path(self, path: str) -> bool:
+        try:
+            props = self.objects().get(self.dbus.ObjectPath(path), {}).get(DEVICE, {})
+        except self.dbus.DBusException:
+            return False
+        return is_midi(props) and str(props.get("Name", "")).lower() not in self.ignore
+
+    def register_agent(self):
+        if self.agent is None:
+            self.agent = make_agent(self.dbus, self.bus, self.is_midi_path)
+        mgr = self.dbus.Interface(self.bus.get_object(BLUEZ, "/org/bluez"), AGENT_MANAGER)
+        try:
+            mgr.RegisterAgent(AGENT_PATH, "NoInputNoOutput")
+        except self.dbus.DBusException as e:
+            if "AlreadyExists" not in e.get_dbus_name():
+                raise
+        mgr.RequestDefaultAgent(AGENT_PATH)
+        log("pairing agent registered (Just Works, MIDI devices only)")
+
     def run(self):
         log("Bluetooth MIDI auto-connect: watching for %s" % MIDI_UUID)
+        self.register_agent()
         if self.ignore:
             log("ignoring: %s" % ", ".join(sorted(self.ignore)))
         # react at once to new devices and disconnects, and check every 3 s regardless
