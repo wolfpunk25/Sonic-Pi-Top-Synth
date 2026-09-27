@@ -1,4 +1,5 @@
 # Rain on the roof - the sound of today's rain
+# category: Ambient
 # No keys needed. Real rain makes it heavier; on a dry day it's a light shower.
 # Play keys for a soft piano over the top.
 

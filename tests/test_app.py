@@ -559,15 +559,33 @@ class TestSonicPi(unittest.TestCase):
         self.a.set_weather(weather())
         goto(self.a, "sonicpi")
 
-    def test_select_installs_starters_and_boots(self):
+    def open_category(self, name):
+        rows = self.a.sp_rows()
+        self.a.sp_cursor = [r[1] if r[0] == "cat" else None for r in rows].index(name)
+        press(self.a, "select")
+
+    def test_select_installs_starters_boots_and_shows_categories(self):
         press(self.a, "select")
         self.assertTrue(self.a.sp_browsing)
         self.assertEqual(self.eng.starts, 1)
-        titles = [s.title for s in self.a.sketches]
-        self.assertEqual(titles, ["Keys", "Chords", "Arpeggio", "Beat and keys", "Weather drift"])
+        cats = [(r[1], r[2]) for r in self.a.sp_rows() if r[0] == "cat"]
+        self.assertEqual([c for c, _ in cats], ["Keys", "Sequencers", "Grooves", "Ambient"])
+        self.assertEqual(sum(n for _, n in cats), len(self.a.sketches))
+        self.assertEqual(self.a.sp_rows()[-1], ("output",))
+        self.assertNotIn("Other", [c for c, _ in cats])      # every starter is filed
+
+    def test_categories_hold_the_right_sketches(self):
+        press(self.a, "select")
+        self.open_category("Sequencers")
+        titles = [r[1].title for r in self.a.sp_rows()]
+        self.assertIn("Evolving sequencer", titles)
+        self.assertIn("Arpeggio", titles)
+        self.assertNotIn("Keys", titles)
+        self.assertEqual(self.a.status.sp.title if self.a.frame() else None, "Sequencers")
 
     def test_sketch_chosen_while_starting_plays_when_ready(self):
         press(self.a, "select")
+        self.open_category("Keys")
         press(self.a, "down")
         press(self.a, "select")            # Chords, before Sonic Pi is up
         self.assertEqual(self.eng.ran, [])
@@ -579,50 +597,70 @@ class TestSonicPi(unittest.TestCase):
         self.assertTrue(self.eng.ran[0].startswith("set :wx_known, true; set :wx_temp, 16.2"))
         self.assertEqual(self.a.sp_playing, "Chords")
 
-    def test_cancel_stops_then_leaves(self):
+    def test_cancel_goes_up_then_stops_then_leaves(self):
         press(self.a, "select")
         self.eng.boot()
+        self.open_category("Keys")
         press(self.a, "select")            # play Keys
         self.assertEqual(self.a.sp_playing, "Keys")
-        press(self.a, "cancel", self.clk, 0.1)
+        press(self.a, "cancel", self.clk, 0.1)          # up to the categories, still playing
+        self.assertIsNone(self.a.sp_cat)
+        self.assertEqual(self.a.sp_playing, "Keys")
+        self.assertEqual(self.a.status.sp.rows[0][2] if self.a.frame() else None, ">")  # Keys marked
+        press(self.a, "cancel", self.clk, 0.1)          # stop
         self.assertIsNone(self.a.sp_playing)
         self.assertTrue(self.a.sp_browsing)
-        self.assertGreaterEqual(self.eng.stops, 2)
-        press(self.a, "cancel", self.clk, 0.1)
+        press(self.a, "cancel", self.clk, 0.1)          # leave
         self.assertFalse(self.a.sp_browsing)
         self.assertEqual(self.a.names[self.a.page], "sonicpi")
+
+    def test_reopening_a_category_lands_on_the_playing_sketch(self):
+        press(self.a, "select")
+        self.eng.boot()
+        self.open_category("Ambient")
+        press(self.a, "down")
+        press(self.a, "down")
+        playing = self.a.sp_rows()[self.a.sp_cursor][1].title
+        press(self.a, "select")
+        press(self.a, "cancel", self.clk, 0.1)
+        press(self.a, "select")            # back into Ambient
+        self.assertEqual(self.a.sp_rows()[self.a.sp_cursor][1].title, playing)
+
+    def test_up_wraps_to_output_and_it_toggles(self):
+        press(self.a, "select")
+        self.eng.boot()
+        press(self.a, "up")                # from the first category straight to "Output"
+        self.assertEqual(self.a.sp_rows()[self.a.sp_cursor], ("output",))
+        press(self.a, "select")
+        press(self.a, "select")
+        self.assertEqual(self.eng.outputs_set, ["speaker", "usb"])
 
     def test_new_sketch_replaces_old(self):
         press(self.a, "select")
         self.eng.boot()
+        self.open_category("Keys")
         press(self.a, "select")
         press(self.a, "down")
         press(self.a, "select")
         self.assertEqual(self.a.sp_playing, "Chords")
         self.assertEqual(len(self.eng.ran), 2)
 
-    def test_output_row_toggles(self):
-        press(self.a, "select")
-        self.eng.boot()
-        for _ in range(10):
-            press(self.a, "down")          # clamps on the last row, "Output"
-        self.assertEqual(self.a.sp_cursor, len(self.a.sketches))
-        press(self.a, "select")
-        press(self.a, "select")
-        self.assertEqual(self.eng.outputs_set, ["speaker", "usb"])
-
     def test_music_keeps_playing_off_the_page(self):
         press(self.a, "select")
         self.eng.boot()
-        press(self.a, "select")
-        press(self.a, "cancel", self.clk, 0.1)   # stops...
-        press(self.a, "select")                   # ...plays again
-        press(self.a, "cancel", self.clk, 0.1)   # stop
+        self.open_category("Keys")
         press(self.a, "select")
         self.a.sp_browsing = False                # e.g. the screensaver closed the list
         press(self.a, "up")
         self.assertEqual(self.a.names[self.a.page], "clips")
         self.assertEqual(self.a.sp_playing, "Keys")
+
+    def test_uncategorised_sketches_go_under_other(self):
+        with open(os.path.join(self.a.cfg.sp_sketches, "99-mine.rb"), "w") as f:
+            f.write("# Mine - no category line\nplay 60\n")
+        press(self.a, "select")
+        cats = [r[1] for r in self.a.sp_rows() if r[0] == "cat"]
+        self.assertEqual(cats[-1], "Other")
 
     def test_error_shows_and_times_out(self):
         press(self.a, "select")
@@ -637,11 +675,12 @@ class TestSonicPi(unittest.TestCase):
     def test_every_state_renders(self):
         self.a.frame()
         press(self.a, "select")
-        self.assertTrue(self.a.frame().getbbox())      # starting
+        self.assertTrue(self.a.frame().getbbox())      # starting, categories
         self.eng.boot()
+        self.open_category("Keys")
         press(self.a, "select")
         self.eng.error, self.eng.error_at = "Syntax Error", self.clk.t
-        self.assertTrue(self.a.frame().getbbox())      # list, playing, error bar
+        self.assertTrue(self.a.frame().getbbox())      # sketches, playing, error bar
         self.a.sp_browsing = False
         self.assertTrue(self.a.frame().getbbox())      # summary
 
@@ -656,6 +695,7 @@ class TestSonicPi(unittest.TestCase):
     def test_speech_is_silenced_by_a_new_sketch(self):
         press(self.a, "select")
         self.eng.boot()
+        self.open_category("Keys")
         self.spk.busy = True
         press(self.a, "select")
         self.assertFalse(self.spk.busy)

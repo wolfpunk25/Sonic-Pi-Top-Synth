@@ -1,4 +1,5 @@
 # Space station - hums, telemetry and distant signals
+# category: Ambient
 # No keys needed. Keys fire laser pings that swoop down an octave.
 
 with_fx :reverb, room: 0.9, mix: 0.5 do

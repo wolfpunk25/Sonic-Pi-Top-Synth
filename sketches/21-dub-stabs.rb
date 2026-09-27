@@ -1,8 +1,10 @@
 # Dub stabs - chords that echo away over a slow dub groove
+# category: Grooves
 # Each key fires a short minor-chord stab into a long echo.
 # Keys below A3 move the bassline to that note.
 
 set :dub_root, 45
+sleep 0.05     # let these settle before any loop reads them (they can race on start-up)
 
 live_loop :drums do
   use_bpm 72

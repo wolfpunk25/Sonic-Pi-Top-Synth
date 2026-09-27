@@ -104,21 +104,26 @@ def recorder_sheet(w, out):
 def sonicpi_sheet(w, out):
     """The Sonic Pi page in each of its states."""
     now = datetime(2026, 9, 27, 12, 5)
-    titles = ["Keys", "Chords", "Arpeggio", "Beat and keys", "Weather drift"]
+    cats = [("Keys", "13", ""), ("Sequencers", "8", ">"), ("Grooves", "5", ""), ("Ambient", "11", ""),
+            ("Output: Headphones", "", "")]
+    amb = [("Weather drift", "", ""), ("Night and day", "", ""), ("Rain on the roof", "", ""),
+           ("Drone choir", "", ">"), ("Space station", "", ""), ("Music box", "", ""), ("Aurora", "", "")]
 
     def st(**v):
-        base = dict(installed=True, midi="C Major Seven", output="Headphones", titles=titles)
+        base = dict(installed=True, midi="C Major Seven", output="Headphones")
         base.update(v)
         return render.Status(battery=64, now=now, sp=render.SpView(**base))
     frames = [
         ("off", render.page_sonicpi(w, st(state="off", midi=""))),
-        ("starting, list", render.page_sonicpi(w, st(state="starting", browsing=True, pending="Chords", cursor=1, midi=""))),
-        ("playing, list", render.page_sonicpi(w, st(state="ready", browsing=True, playing="Keys", cursor=0))),
-        ("output row", render.page_sonicpi(w, st(state="ready", browsing=True, playing="Arpeggio", cursor=5))),
-        ("playing, summary", render.page_sonicpi(w, st(state="ready", playing="Weather drift"))),
-        ("error", render.page_sonicpi(w, st(state="ready", browsing=True, cursor=3,
-                                             error="Runtime Error Sonic Pi doesn't know a function called `x`"))),
-        ("no keyboard", render.page_sonicpi(w, st(state="ready", midi="", output="Speaker"))),
+        ("starting, categories", render.page_sonicpi(w, st(state="starting", browsing=True, rows=cats, cursor=0, midi=""))),
+        ("categories, playing", render.page_sonicpi(w, st(state="ready", browsing=True, rows=cats, cursor=1,
+                                                          playing="Evolving sequencer"))),
+        ("output row", render.page_sonicpi(w, st(state="ready", browsing=True, rows=cats, cursor=4))),
+        ("inside Ambient", render.page_sonicpi(w, st(state="ready", browsing=True, title="Ambient", rows=amb,
+                                                     cursor=3, playing="Drone choir"))),
+        ("playing, summary", render.page_sonicpi(w, st(state="ready", playing="Airport loops"))),
+        ("error", render.page_sonicpi(w, st(state="ready", browsing=True, title="Ambient", rows=amb, cursor=5,
+                                             error="Unknown: wobble"))),
         ("not installed", render.page_sonicpi(w, render.Status(now=now, sp=render.SpView()))),
     ]
     path = os.path.join(out, "sonicpi.png")

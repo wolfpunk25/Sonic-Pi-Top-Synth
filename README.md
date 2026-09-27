@@ -61,46 +61,42 @@ rsync -av <user>@<pi-address>:soundwalks/ ~/Music/Sound\ walks/
 
 Sonic Pi 5 runs headless, with no editor. The pi-top screen is the front panel, and a USB MIDI keyboard is the instrument.
 
-- **Sonic Pi page, Select:** opens the sketch list. Sonic Pi starts if it isn't running; it's ready in about 3 s,
+- **Sonic Pi page, Select:** opens the list. Sonic Pi starts if it isn't running; it's ready in about 3 s,
   and a sketch picked before then (shown with `~`) plays as soon as it is.
-- **In the list:** Up/Down choose, **Select** plays (replacing whatever was playing, marked `>`),
-  **Cancel** stops the music, and a second **Cancel** leaves the list. The music carries on while you look at other pages.
-- **The last row, "Output",** switches Sonic Pi between the headphones (USB card) and the pi-top's speaker. It moves only
-  Sonic Pi; the weather voice stays on the speaker (`[voice] output`).
+- **The list has two levels.** At the top are the categories (Keys, Sequencers, Grooves, Ambient, with counts) and
+  **Output**. Select opens a category; Select on a sketch plays it (replacing whatever was playing, marked `>`).
+  Up and Down wrap round.
+- **Cancel** inside a category goes back up to the categories and the music keeps playing. At the top, Cancel stops the
+  music, and a second Cancel leaves the list. The music also carries on while you look at other pages.
+- **Output** switches Sonic Pi between the headphones (USB card) and the pi-top's speaker. It moves only Sonic Pi;
+  the weather voice stays on the speaker (`[voice] output`).
 - Errors in a sketch appear in a bar along the bottom for 15 s.
 
 **Sketches** are ordinary Sonic Pi files in `~/sonicpi-sketches/`, played in filename order. The ones in `sketches/` are copied
 in the first time (later additions: `cp -n sketches/*.rb ~/sonicpi-sketches/`):
 
-| | Sketch | Keys? |
-|---|---|---|
-| 01 | **Keys**: Prophet synth | ✓ |
-| 02 | **Chords**: one key, a minor-7th pad | ✓ |
-| 03 | **Arpeggio**: the last key sets the root | ✓ |
-| 04 | **Beat and keys**: 100 bpm groove with a plucked synth | ✓ |
-| 05 | **Weather drift**: ambient music from the weather | |
-| 06 | **Echo keys**: dotted-eighth echo on a bright synth | ✓ |
-| 07 | **Acid bass**: TB-303 pattern; the keys set the root | ✓ |
-| 08 | **Loop what you play**: your last 8 notes loop | ✓ |
-| 09 | **Harmony**: each key plays a chord in C major | ✓ |
-| 10 | **Night and day**: bright by day, dark after sunset | |
-| 11 | **Chiptune**: 8-bit arpeggios, chip bass and drums | ✓ |
-| 12 | **Strummer**: plucked-guitar strums (major on white keys, minor on black) | ✓ |
-| 13 | **Finger drums**: the keys play a drum kit | ✓ |
-| 14 | **Rain on the roof**: the rain, heavier when it's really raining, with piano on the keys | ✓ |
-| 15 | **Bells**: slow bells with a cathedral tail | ✓ |
-| 16 | **Evolving sequencer**: a 16-step pattern that mutates every bar; low keys change the key, high keys write notes in and pick the mode, and playing a lot raises the energy | ✓ steers it |
-| 17 | **Copycat**: improvises from which note you tend to play after which | ✓ teaches it |
-| 18 | **Euclid garden**: three evenly spread rhythms drifting in and out of phase; each key retunes a voice and changes how busy it is | ✓ steers it |
-| 19 | **Cellular**: a cellular-automaton melody; white keys flip cells, black keys change the rule | ✓ steers it |
-| 20 | **Drone choir**: build a sustained chord; each key adds or removes a voice | ✓ builds it |
-| 21 | **Dub stabs**: minor-chord stabs into a long echo over a 72 bpm dub groove; low keys move the bass | ✓ |
-| 22 | **Space station**: hums, telemetry beeps and distant signals; the keys fire laser pings | ✓ optional |
-| 23 | **Late night jazz**: ii-V-I-vi with walking bass and swung ride; low keys change the key, high keys play electric piano | ✓ |
-| 24 | **Phase**: one tune on two kalimbas at slightly different tempos, slowly drifting apart; eight notes give it a new tune | ✓ steers it |
-| 25 | **Music box**: plays itself and slowly winds down; each key winds it up and adds a note | ✓ winds it |
+Each sketch has a `# category: Name` line near the top. Change it to move the sketch to another category; a new name
+makes a new category, and a sketch without the line goes under **Other**.
 
-Writing your own: values saved with `set` come back **frozen**. Copy one with `get(:x).to_a.dup` before changing it in place
+**Keys** (playable instruments)
+Keys (Prophet) · Chords · Echo keys · Harmony · Strummer · Bells · Piano · Electric piano · Organ · Supersaw · Hoover ·
+Deep bass · Tech saws
+
+**Sequencers** (they play by themselves, and your notes steer them)
+Arpeggio · Acid bass · Loop what you play · Evolving sequencer · Copycat · Euclid garden · Cellular · Phase
+
+**Grooves** (a beat to play over)
+Beat and keys · Chiptune · Finger drums · Dub stabs · Late night jazz
+
+**Ambient** (no keys needed; the keys add something gentle)
+Weather drift · Night and day · Rain on the roof · Drone choir · Space station · Music box · Aurora · Tidal ·
+Forest dawn · Snowfall · Airport loops
+
+Weather drift, Night and day, Rain on the roof and Snowfall listen to the real weather.
+
+Writing your own: put `sleep 0.05` after the `set`s at the top, before any `live_loop` that reads them with `get`.
+Without it, a loop can start before the values are set and read `nil`, but only sometimes (1 run in 6 for Airport loops).
+Values saved with `set` come back **frozen**. Copy one with `get(:x).to_a.dup` before changing it in place
 (sketches 16, 18 and 19 do this). Use local variables rather than Ruby constants.
 
 `python3 tools/sketch_check.py [--seconds N] sketches/*.rb` runs every sketch on the real Sonic Pi, playing a chromatic MIDI phrase through

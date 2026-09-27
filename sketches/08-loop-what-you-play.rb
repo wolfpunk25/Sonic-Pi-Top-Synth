@@ -1,7 +1,9 @@
 # Loop what you play - your last 8 notes become a looping phrase
+# category: Sequencers
 # Play a few notes; they repeat in order until you play more.
 
 set :phrase, [:c4, :e4, :g4, :b4]
+sleep 0.05     # let these settle before any loop reads them (they can race on start-up)
 
 live_loop :listen do
   use_real_time

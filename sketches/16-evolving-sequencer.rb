@@ -1,4 +1,5 @@
 # Evolving sequencer - a pattern that keeps changing, and you steer it
+# category: Sequencers
 # A 16-step melody mutates a little every bar. Your notes push it:
 #   below middle C   - changes the key (the bass follows)
 #   middle C and up  - your note is written into the pattern, and the interval
@@ -11,6 +12,7 @@ set :mode, :dorian
 set :energy, 0.3
 set :step, 0
 set :pattern, [0, -1, 2, -1, 4, 3, -1, 2, 0, -1, 5, 4, -1, 2, 1, -1]   # scale degrees, -1 = rest
+sleep 0.05     # let these settle before any loop reads them (they can race on start-up)
 
 modes = { 1 => :phrygian, 3 => :minor, 4 => :major, 6 => :lydian,
           8 => :minor, 9 => :dorian, 10 => :mixolydian, 11 => :major }

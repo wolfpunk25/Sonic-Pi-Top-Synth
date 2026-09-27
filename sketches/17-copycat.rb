@@ -1,9 +1,11 @@
 # Copycat - improvises from what you've played
+# category: Sequencers
 # It learns which note tends to follow which, and wanders through your own ideas.
 # Play a phrase, stop, and listen to it come back rearranged.
 
 set :heard, [60, 62, 64, 67, 64, 62, 60]
 set :cur, 60
+sleep 0.05     # let these settle before any loop reads them (they can race on start-up)
 
 live_loop :listen do
   use_real_time

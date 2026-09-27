@@ -1,7 +1,9 @@
 # Arpeggio - the last key you press sets the root
+# category: Sequencers
 # It starts on C straight away; play a key to move it.
 
 set :root, :c3
+sleep 0.05     # let these settle before any loop reads them (they can race on start-up)
 
 live_loop :listen do
   use_real_time

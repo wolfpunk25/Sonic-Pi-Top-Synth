@@ -1,4 +1,5 @@
 # Cellular - a melody grown by a cellular automaton
+# category: Sequencers
 # A row of 16 cells evolves every bar by a simple rule; live cells play
 # notes. White keys flip a cell on or off; black keys change the rule.
 # If the row ever dies out, a single cell is planted to start again.
@@ -6,6 +7,7 @@
 rules = [30, 90, 110, 150, 45, 73, 105, 22]
 set :rule, 90
 set :row, [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+sleep 0.05     # let these settle before any loop reads them (they can race on start-up)
 
 live_loop :listen do
   use_real_time

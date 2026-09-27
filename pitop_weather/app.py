@@ -114,6 +114,9 @@ class App:
         self.sp_browsing = False
         self.sp_cursor = 0
         self.sp_playing: Optional[str] = None     # title of the running sketch
+        self.sp_playing_cat: Optional[str] = None
+        self.sp_cat: Optional[str] = None         # None = the category list
+        self.sp_cat_cursor = 0                    # where to come back to
         self.sp_pending: Optional[sonicpi.Sketch] = None
         self.sp_started_at = 0.0
         self._last_mic_poll = -1e9
@@ -215,24 +218,40 @@ class App:
             sonicpi.install_starters(self.cfg.sp_sketches)
         self.sketches = sonicpi.load_sketches(self.cfg.sp_sketches)
         self.sp_browsing = True
-        self.sp_cursor = min(self.sp_cursor, len(self.sketches))
+        self.sp_cat = None
+        self.sp_cursor = min(self.sp_cat_cursor, len(self.sp_rows()) - 1)
         if self.engine.state in ("off", "error"):
             self.engine.start()
 
+    def sp_group(self, cat: Optional[str]) -> List["sonicpi.Sketch"]:
+        return next((g for n, g in sonicpi.categories(self.sketches) if n == cat), [])
+
+    def sp_rows(self) -> list:
+        """The categories (and Output) at the top level; a category's sketches inside it."""
+        if self.sp_cat is None:
+            return [("cat", n, len(g)) for n, g in sonicpi.categories(self.sketches)] + [("output",)]
+        return [("sketch", s) for s in self.sp_group(self.sp_cat)]
+
     def handle_sonicpi(self, name: str):
-        last = len(self.sketches)            # the row after the sketches is "Output"
-        if name == "up":
-            self.sp_cursor = max(0, self.sp_cursor - 1)
-        elif name == "down":
-            self.sp_cursor = min(last, self.sp_cursor + 1)
-        elif name == "select" and self.sp_cursor == last:
-            self.cycle_output()
+        rows = self.sp_rows()
+        if name in ("up", "down"):           # wraps, so the bottom of a long list is one press away
+            self.sp_cursor = (self.sp_cursor + (1 if name == "down" else -1)) % len(rows)
         elif name == "select":
-            self.play_sketch(self.sketches[self.sp_cursor])
+            row = rows[self.sp_cursor]
+            if row[0] == "output":
+                self.cycle_output()
+            elif row[0] == "cat":
+                self.sp_cat, self.sp_cat_cursor = row[1], self.sp_cursor
+                titles = [sk.title for sk in self.sp_group(row[1])]
+                self.sp_cursor = titles.index(self.sp_playing) if self.sp_playing in titles else 0
+            else:
+                self.play_sketch(row[1])
         elif name == "cancel":
-            if self.sp_playing or self.sp_pending:
+            if self.sp_cat is not None:      # back up to the categories; the music carries on
+                self.sp_cat, self.sp_cursor = None, self.sp_cat_cursor
+            elif self.sp_playing or self.sp_pending:
                 self.engine.stop_all()
-                self.sp_playing = self.sp_pending = None
+                self.sp_playing = self.sp_pending = self.sp_playing_cat = None
             else:
                 self.sp_browsing = False
 
@@ -251,6 +270,7 @@ class App:
             return
         self.engine.run(sonicpi.weather_header(self.view()) + code)
         self.sp_playing, self.sp_pending = sketch.title, None
+        self.sp_playing_cat = sketch.category
         self.sp_started_at = self.clock()
 
     def cycle_output(self):
@@ -275,9 +295,20 @@ class App:
         if e is None:
             return
         v.state, v.midi, v.output = e.state, e.midi_name, audio.LABELS.get(e.output, e.output)
-        v.titles = [s.title for s in self.sketches]
         v.browsing, v.cursor, v.playing = self.sp_browsing, self.sp_cursor, self.sp_playing
         v.pending = self.sp_pending.title if self.sp_pending else None
+        v.title = self.sp_cat or "Sonic Pi"
+        pend_cat = self.sp_pending.category if self.sp_pending else None
+        v.rows = []
+        for row in self.sp_rows():
+            if row[0] == "cat":
+                mark = ">" if row[1] == self.sp_playing_cat else ("~" if row[1] == pend_cat else "")
+                v.rows.append((row[1], str(row[2]), mark))
+            elif row[0] == "output":
+                v.rows.append(("Output: " + v.output, "", ""))
+            else:
+                t = row[1].title
+                v.rows.append((t, "", ">" if t == v.playing else ("~" if t == v.pending else "")))
         v.error = e.error if e.error and self.clock() - e.error_at < 15 else ""
 
     def check_hold(self):

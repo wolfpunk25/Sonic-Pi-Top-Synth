@@ -1,4 +1,5 @@
 # Night and day - changes with the sun
+# category: Ambient
 # No keys needed. Daytime is a bright kalimba melody; after sunset,
 # a slow dark pad with distant sounds. Cloud and rain soften it.
 

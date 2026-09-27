@@ -1,4 +1,5 @@
 # Chiptune - 8-bit arpeggios under your fingers
+# category: Grooves
 # Each key fires a fast home-computer arpeggio over a chip bass and noise drums.
 
 live_loop :keys do

@@ -1,8 +1,10 @@
 # Drone choir - build a slowly breathing chord, one key at a time
+# category: Ambient
 # Press a note to add it to the drone; press it again to take it out.
 # Up to six voices; the oldest drops out when you add a seventh.
 
 set :drone, [45, 52]
+sleep 0.05     # let these settle before any loop reads them (they can race on start-up)
 
 live_loop :listen do
   use_real_time

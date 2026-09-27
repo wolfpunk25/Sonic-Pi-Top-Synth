@@ -117,10 +117,14 @@ def parse_ports(args) -> List[str]:
 
 # ---- sketches ------------------------------------------------------------------
 
+CATEGORY_ORDER = ["Keys", "Sequencers", "Grooves", "Ambient"]
+
+
 @dataclass
 class Sketch:
     path: str
     title: str
+    category: str = "Other"
 
     def code(self) -> str:
         with open(self.path, encoding="utf-8") as f:
@@ -129,19 +133,35 @@ class Sketch:
 
 def load_sketches(folder: str) -> List[Sketch]:
     """Every .rb in the folder, in filename order. The title is the first
-    comment line ("# Keys - Prophet synth") up to a dash, else the filename."""
+    comment line ("# Keys - Prophet synth") up to a dash, else the filename;
+    a "# category: Ambient" line in the first few lines files it."""
     out = []
     for path in sorted(glob.glob(os.path.join(folder, "*.rb"))):
         title = re.sub(r"^\d+[-_ ]*", "", os.path.splitext(os.path.basename(path))[0]).replace("-", " ")
+        category = "Other"
         try:
             with open(path, encoding="utf-8") as f:
-                first = f.readline().strip()
-            if first.startswith("#"):
-                title = re.split(r"\s+[-–—]\s+", first.lstrip("# ").strip())[0] or title
+                head = [f.readline().strip() for _ in range(8)]
         except OSError:
             continue
-        out.append(Sketch(path, title))
+        if head[0].startswith("#"):
+            title = re.split(r"\s+[-–—]\s+", head[0].lstrip("# ").strip())[0] or title
+        for line in head:
+            m = re.match(r"#\s*category\s*:\s*(.+)", line, re.I)
+            if m:
+                category = m.group(1).strip().title()
+                break
+        out.append(Sketch(path, title, category))
     return out
+
+
+def categories(sketches: List[Sketch]) -> List[tuple]:
+    """[(name, [sketches...])] with the usual four first, then any others A-Z."""
+    groups = {}
+    for s in sketches:
+        groups.setdefault(s.category, []).append(s)
+    known = [c for c in CATEGORY_ORDER if c in groups]
+    return [(c, groups[c]) for c in known + sorted(c for c in groups if c not in CATEGORY_ORDER)]
 
 
 def install_starters(folder: str) -> bool:

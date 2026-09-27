@@ -1,4 +1,5 @@
 # Euclid garden - three rhythms drifting in and out of phase
+# category: Sequencers
 # Each voice spreads its hits evenly over 16 steps; every two bars one of
 # them gains or loses a hit, or shifts round. Each key you play gives the
 # next voice that pitch and a new number of hits.
@@ -7,6 +8,7 @@ set :v_notes, [45, 64, 76]
 set :v_hits, [3, 5, 7]
 set :v_rot, [0, 0, 0]
 set :v_next, 0
+sleep 0.05     # let these settle before any loop reads them (they can race on start-up)
 
 live_loop :listen do
   use_real_time

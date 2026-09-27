@@ -50,7 +50,8 @@ class SpView:
     state: str = "off"            # off / starting / ready / error
     midi: str = ""
     output: str = ""
-    titles: list = field(default_factory=list)
+    title: str = "Sonic Pi"       # the category name while inside one
+    rows: list = field(default_factory=list)   # (label, right-hand text, mark ">"/"~"/"")
     browsing: bool = False
     cursor: int = 0
     playing: Optional[str] = None
@@ -551,7 +552,7 @@ def page_clips(w: Optional[Weather], st: Status) -> Image.Image:
 def page_sonicpi(w: Optional[Weather], st: Status) -> Image.Image:
     img, d = new()
     v = st.sp or SpView()
-    title = "Sonic Pi" + ("..." if v.state == "starting" else "")
+    title = (v.title if v.browsing else "Sonic Pi") + ("..." if v.state == "starting" else "")
     header(d, title, st.now or w.now, st)
     if not v.installed:
         d.text((0, 13), "Not installed", font=font(12, True), fill=1)
@@ -574,22 +575,30 @@ def page_sonicpi(w: Optional[Weather], st: Status) -> Image.Image:
         out = "Out: " + (v.output or "-")
         d.text((0, 49), out, font=fit(d, out, 9, W), fill=1)
     else:
-        rows = [(t, t == v.playing, t == v.pending) for t in v.titles]
-        rows.append(("Output: " + (v.output or "-"), False, False))
+        rows = v.rows
         rh = 13
         n = 4 if not v.error else 3
         first = max(0, min(v.cursor - 1, len(rows) - n))
-        for i, (label, playing, pending) in enumerate(rows[first:first + n]):
+        for i, (label, right, mark) in enumerate(rows[first:first + n]):
             idx = first + i
             y = 11 + i * rh
             sel = idx == v.cursor
+            ink = 0 if sel else 1
             if sel:
                 d.rectangle([0, y, W - 1, y + rh - 1], fill=1)
-            mark = ">" if playing else ("~" if pending else " ")
-            f = font(10, playing) if idx < len(v.titles) else font(9)
-            d.text((1, y), mark, font=font(10, True), fill=0 if sel else 1)
-            d.text((10, y), label, font=fit(d, label, 10, W - 12, playing) if idx < len(v.titles) else f,
-                    fill=0 if sel else 1)
+            bold = mark == ">"
+            d.text((1, y), mark or " ", font=font(10, True), fill=ink)
+            rw = text_w(d, right, font(9)) + 3 if right else 0
+            if right:
+                d.text((W - rw, y + 1), right, font=font(9), fill=ink)
+            small = label.startswith("Output:")
+            d.text((10, y + (1 if small else 0)), label,
+                   font=font(9) if small else fit(d, label, 10, W - 12 - rw, bold), fill=ink)
+        # a thin scroll bar when there's more than fits
+        if len(rows) > n:
+            top = 11 + (H - 12 - (0 if not v.error else 13)) * first // len(rows)
+            bar = max(4, (H - 12) * n // len(rows))
+            d.line([(W - 1, top), (W - 1, top + bar)], fill=1)
     if v.error:
         # errors sit in an inverse bar along the bottom until they time out
         d.rectangle([0, 52, W - 1, H - 1], fill=1)

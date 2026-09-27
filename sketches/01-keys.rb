@@ -1,4 +1,5 @@
 # Keys - Prophet synth on your keyboard
+# category: Keys
 # Every note you play, straight through a warm analogue-style synth.
 
 live_loop :keys do

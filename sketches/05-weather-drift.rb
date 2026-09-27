@@ -1,4 +1,5 @@
 # Weather drift - ambient that follows today's weather
+# category: Ambient
 # No keys needed. Colder is lower, rain adds drops, wind speeds it up.
 # The station sets these before every sketch runs.
 

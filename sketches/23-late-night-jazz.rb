@@ -1,8 +1,10 @@
 # Late night jazz - a walking bass trio you can play over
+# category: Grooves
 # ii-V-I-vi on electric piano, walking bass and a swung ride.
 # Keys below G3 change the key; higher keys play electric piano.
 
 set :jazz_key, 48      # C
+sleep 0.05     # let these settle before any loop reads them (they can race on start-up)
 
 live_loop :listen do
   use_real_time

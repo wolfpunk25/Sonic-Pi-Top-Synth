@@ -1,9 +1,11 @@
 # Phase - two players, one tune, slowly drifting apart
+# category: Sequencers
 # The same eight notes on left and right, one a touch faster, so the
 # pattern slides against itself (after Steve Reich's Piano Phase).
 # Play eight notes to give them a new tune.
 
 set :tune, [64, 66, 71, 73, 74, 66, 64, 73]
+sleep 0.05     # let these settle before any loop reads them (they can race on start-up)
 
 live_loop :listen do
   use_real_time

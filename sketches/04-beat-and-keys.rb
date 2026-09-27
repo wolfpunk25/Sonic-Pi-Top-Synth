@@ -1,4 +1,5 @@
 # Beat and keys - a steady groove to play over
+# category: Grooves
 # Kick, hats and snare at 100 bpm, with the keys on a plucky synth.
 
 live_loop :drums do

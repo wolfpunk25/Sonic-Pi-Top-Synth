@@ -1,4 +1,5 @@
 # Finger drums - the keys play a drum kit
+# category: Grooves
 # C kick, D snare, E closed hat, F open hat, G clap, A low tom,
 # B high tom. Sharps are percussion. Every octave repeats the kit.
 
