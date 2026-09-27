@@ -93,6 +93,12 @@ in the first time (later additions: `cp -n sketches/*.rb ~/sonicpi-sketches/`):
 | 17 | **Copycat**: improvises from which note you tend to play after which | ✓ teaches it |
 | 18 | **Euclid garden**: three evenly spread rhythms drifting in and out of phase; each key retunes a voice and changes how busy it is | ✓ steers it |
 | 19 | **Cellular**: a cellular-automaton melody; white keys flip cells, black keys change the rule | ✓ steers it |
+| 20 | **Drone choir**: build a sustained chord; each key adds or removes a voice | ✓ builds it |
+| 21 | **Dub stabs**: minor-chord stabs into a long echo over a 72 bpm dub groove; low keys move the bass | ✓ |
+| 22 | **Space station**: hums, telemetry beeps and distant signals; the keys fire laser pings | ✓ optional |
+| 23 | **Late night jazz**: ii-V-I-vi with walking bass and swung ride; low keys change the key, high keys play electric piano | ✓ |
+| 24 | **Phase**: one tune on two kalimbas at slightly different tempos, slowly drifting apart; eight notes give it a new tune | ✓ steers it |
+| 25 | **Music box**: plays itself and slowly winds down; each key winds it up and adds a note | ✓ winds it |
 
 Writing your own: values saved with `set` come back **frozen**. Copy one with `get(:x).to_a.dup` before changing it in place
 (sketches 16, 18 and 19 do this). Use local variables rather than Ruby constants.
