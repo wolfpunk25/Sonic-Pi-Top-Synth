@@ -54,7 +54,7 @@ fetched in the last 30 minutes gives `"source": "observed"`; otherwise the tag i
 Copying the clips to the Mac:
 
 ```
-rsync -av darren@192.168.68.53:soundwalks/ ~/Music/Sound\ walks/
+rsync -av <user>@<pi-address>:soundwalks/ ~/Music/Sound\ walks/
 ```
 
 ## Sonic Pi
@@ -69,8 +69,29 @@ Sonic Pi 5 runs headless, with no editor. The pi-top screen is the front panel, 
   Sonic Pi; the weather voice stays on the speaker (`[voice] output`).
 - Errors in a sketch appear in a bar along the bottom for 15 s.
 
-**Sketches** are ordinary Sonic Pi files in `~/sonicpi-sketches/`, played in filename order. Five starters are copied in
-the first time: Keys, Chords, Arpeggio, Beat and keys, and Weather drift. Write or edit sketches on the Mac and copy them over.
+**Sketches** are ordinary Sonic Pi files in `~/sonicpi-sketches/`, played in filename order. The ones in `sketches/` are copied
+in the first time (later additions: `cp -n sketches/*.rb ~/sonicpi-sketches/`):
+
+| | Sketch | Keys? |
+|---|---|---|
+| 01 | **Keys**: Prophet synth | ✓ |
+| 02 | **Chords**: one key, a minor-7th pad | ✓ |
+| 03 | **Arpeggio**: the last key sets the root | ✓ |
+| 04 | **Beat and keys**: 100 bpm groove with a plucked synth | ✓ |
+| 05 | **Weather drift**: ambient music from the weather | |
+| 06 | **Echo keys**: dotted-eighth echo on a bright synth | ✓ |
+| 07 | **Acid bass**: TB-303 pattern; the keys set the root | ✓ |
+| 08 | **Loop what you play**: your last 8 notes loop | ✓ |
+| 09 | **Harmony**: each key plays a chord in C major | ✓ |
+| 10 | **Night and day**: bright by day, dark after sunset | |
+| 11 | **Chiptune**: 8-bit arpeggios, chip bass and drums | ✓ |
+| 12 | **Strummer**: plucked-guitar strums (major on white keys, minor on black) | ✓ |
+| 13 | **Finger drums**: the keys play a drum kit | ✓ |
+| 14 | **Rain on the roof**: the rain, heavier when it's really raining, with piano on the keys | ✓ |
+| 15 | **Bells**: slow bells with a cathedral tail | ✓ |
+
+`python3 tools/sketch_check.py sketches/*.rb` runs every sketch on the real Sonic Pi, playing a chromatic MIDI phrase through
+ALSA's Midi Through port so that code triggered by keys runs too, and reports any errors. Write or edit sketches on the Mac and copy them over.
 Before each sketch runs, the station sets `get(:wx_temp)`, `:wx_rain` (mm now), `:wx_wind` (mph), `:wx_code` and `:wx_day`,
 with `:wx_known` false when there's no forecast yet.
 

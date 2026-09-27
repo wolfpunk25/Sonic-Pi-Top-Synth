@@ -133,7 +133,7 @@ def main():
     ap.add_argument("--out", default=os.path.join(HERE, "sim-out"))
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    st = render.Status(battery=64, charging=False, minutes_left=205, ip="192.168.68.53", stale_minutes=3)
+    st = render.Status(battery=64, charging=False, minutes_left=205, ip="192.168.1.20", stale_minutes=3)
 
     if a.live:
         lat, lon, name = forecast.geocode(a.live, a.country)

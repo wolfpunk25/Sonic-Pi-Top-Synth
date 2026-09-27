@@ -18,14 +18,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pitop_weather import sonicpi  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-NOTES = [60, 64, 67, 72, 62, 49, 45, 80]      # includes a black key and extremes
+NOTES = list(range(60, 72)) + [45, 80]      # every pitch class, plus extremes
 
 
 def midi_file(path):
     ev = b""
     for n in NOTES:
         ev += b"\x00" + bytes([0x90, n, 100])          # note on, no delay
-        ev += b"\x81\x00" + bytes([0x80, n, 0])        # note off after 128 ticks
+        ev += b"\x60" + bytes([0x80, n, 0])            # note off after 96 ticks (1/8 s)
     ev += b"\x00\xff\x2f\x00"
     with open(path, "wb") as f:
         f.write(b"MThd" + struct.pack(">IHHH", 6, 0, 1, 384))   # 384 ticks/beat, 120 bpm
