@@ -201,7 +201,7 @@ Fonts: DejaVu Sans (`pitop_weather/fonts/LICENSE`).
 
 ## The sketches
 
-[Keys (15)](#keys) · [Sequencers (19)](#sequencers) · [Grooves (15)](#grooves) · [Ambient (19)](#ambient)
+[Keys (20)](#keys) · [Sequencers (20)](#sequencers) · [Grooves (20)](#grooves) · [Ambient (20)](#ambient)
 
 ### Keys
 
@@ -273,6 +273,31 @@ The sound from Beat and keys, on its own. Short and percussive; good for fast li
 *`39-marimba.rb`*: Warm wooden mallets.
 
 A soft FM mallet with a short, round decay. Lower notes ring longer.
+
+#### Vibraphone
+*`69-vibraphone.rb`*: Soft mallets on metal bars, with the motor on.
+
+A mellow bell tone through a slow tremolo, like a vibraphone's spinning fans. Lovely for slow chords and jazz lines.
+
+#### Lead
+*`70-lead.rb`*: A singing synth lead with a little echo.
+
+A warm, vocal lead sound for melodies over the grooves.
+
+#### Glass
+*`71-glass.rb`*: Bright, detuned glassy tones.
+
+Two slightly detuned triangle waves ringing out in a big room. Sparkly in the upper octaves.
+
+#### Strings
+*`72-strings.rb`*: A soft string section that swells in.
+
+A slow bow-like attack and a long release, so held notes and chords bloom. Play slowly and let each note arrive.
+
+#### Wobble bass
+*`73-wobble-bass.rb`*: A growling bass that wobbles in time.
+
+Each note is an octave down with a filter wobbling four times a beat at 140 bpm. Best in the lower octaves; try it over Techno or Drum and bass.
 
 ### Sequencers
 
@@ -377,6 +402,11 @@ An 8x8 grid evolves every bar. The music reads it left to right: each live cell 
 
 Two sine waves at unrelated speeds are added together and read off a scale, so the melody rises and falls in long, never-quite-repeating arcs. A key sets the key of the scale.
 
+#### Pendulum wave
+*`74-pendulum-wave.rb`*: Twelve pendulums drifting in and out of step.
+
+Each pendulum is a little shorter than the last, so it swings a little faster; each chimes as it passes the middle. They start together, spread into patterns and waves, and every 60 seconds line up again. A key sets the key of the chimes.
+
 ### Grooves
 
 Backing tracks to play over. Most add **your last Keys sound** on top, so pick an instrument under Keys first (Pluck until you do).
@@ -455,6 +485,31 @@ Bass on the first beat and soft chords on the second and third, moving round C, 
 *`56-breakbeat.rb` · plays your last Keys sound*: A chopped funk break with a rolling bass.
 
 A classic breakbeat loop, now and then chopped up by starting it from a different point, over a bass that bounces between two notes. Your keys play your last Keys sound.
+
+#### Afrobeat
+*`75-afrobeat.rb` · plays your last Keys sound*: Interlocking drums, shaker, cowbell and a busy bass.
+
+A loping 110 bpm groove after Tony Allen: the kick and snare dance around a steady shaker and a cowbell pattern, with a looping bass. Your keys play your last Keys sound; Organ and Electric piano suit it.
+
+#### Trip hop
+*`76-trip-hop.rb` · plays your last Keys sound*: Slow, heavy and smoky at 82 bpm.
+
+A heavy half-time beat, a deep sub, crackle and a dark wash, after the Bristol sound. Your keys play your last Keys sound; Strings, Electric piano and Glass suit it.
+
+#### Two-step
+*`77-two-step.rb` · plays your last Keys sound*: Shuffling UK garage at 132 bpm.
+
+The skippy two-step kick that avoids the downbeats, crisp snares on 2 and 4, swung hats and a rubbery bass. Your keys play your last Keys sound.
+
+#### Dembow
+*`78-dembow.rb` · plays your last Keys sound*: The reggaeton rhythm at 94 bpm.
+
+Boom, ch-boom-chick: the kick on every beat with the snare's famous syncopation, plus a simple bass. Your keys play your last Keys sound.
+
+#### Disco
+*`79-disco.rb` · plays your last Keys sound*: Four on the floor with an octave-jumping bass.
+
+A steady kick, open hats on the off-beats, handclaps on 2 and 4 and the classic bass that leaps between octaves. Your keys play your last Keys sound; Strings and Electric piano suit it.
 
 ### Ambient
 
@@ -554,5 +609,10 @@ A low rumble, wheels clacking over the rail joints, a horn far off and now and t
 *`64-overtones.rb`*: A drone made of one note's natural harmonics.
 
 The first sixteen harmonics of a low C fade in and out one at a time, so the chord hiding inside a single note slowly reveals itself. Keys move the low note; the harmonics follow over the next few seconds.
+
+#### Tanpura
+*`80-tanpura.rb`*: The shimmering drone behind Indian classical music.
+
+Four strings plucked in an endless cycle (fifth, two high tonics, low tonic), each ringing long enough to blur into a living, buzzing hum. No keys needed; keys play a soft voice-like tone over it.
 
 <!-- sketches:end -->
