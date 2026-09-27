@@ -9,8 +9,9 @@ which Sonic Pi picks up by itself. No pairing is needed.
   * Scanning runs only while no MIDI controller is connected, and only for
     devices advertising MIDI - scanning while connected can add latency on
     the Pi's combined Wi-Fi/Bluetooth chip.
-  * A device that keeps failing is retried with a growing gap (5 s up to
-    2 min), so a misbehaving controller can't hog the radio.
+  * A device that keeps failing - or connects and then drops within 30 s,
+    as a CircuitPython controller here does - is retried with a growing gap
+    (5 s up to 2 min), so a misbehaving controller can't hog the radio.
   * The adapter is powered on at start and whenever it turns off.
 
 Needs /etc/systemd/system/bluetooth.service.d/20-midi.conf (bluetoothd started
@@ -32,6 +33,7 @@ PROPS = "org.freedesktop.DBus.Properties"
 OM = "org.freedesktop.DBus.ObjectManager"
 
 MIN_BACKOFF, MAX_BACKOFF = 5.0, 120.0
+STABLE_AFTER = 30.0       # a connection only counts as good once it has lasted this long
 
 
 def log(msg: str):
@@ -85,6 +87,7 @@ class AutoConnect:
         self.bus = dbus.SystemBus()
         self.om = dbus.Interface(self.bus.get_object(BLUEZ, "/"), OM)
         self.backoff = Backoff()
+        self.connected_since = {}                    # path -> when it connected
         self.pending = set()
         self.ignore = ignored_names()
         self.adapter_path = None
@@ -163,9 +166,19 @@ class AutoConnect:
             self.ensure_powered()
             devices = list(self.midi_devices())
             connected = [p for p, d in devices if d.get("Connected")]
-            for p, _ in devices:
+            now = time.monotonic()
+            for p, d in devices:
                 if p in connected:
-                    self.backoff.succeeded(p)
+                    since = self.connected_since.setdefault(p, now)
+                    if now - since >= STABLE_AFTER:
+                        self.backoff.succeeded(p)
+                elif p in self.connected_since:
+                    lasted = now - self.connected_since.pop(p)
+                    if lasted < STABLE_AFTER:            # connected, then dropped: treat as a failure
+                        gap = self.backoff.failed(p)
+                        log("%s dropped after %.0f s; next try in %.0f s" % (d.get("Name", p), lasted, gap))
+                    else:
+                        log("%s disconnected" % d.get("Name", p))
             self.set_scanning(not connected)
             for p, d in devices:
                 if not d.get("Connected"):
