@@ -803,10 +803,13 @@ class TestSonicPiPieces(unittest.TestCase):
         self.assertEqual((y.gain, y.keys), (1.0, ""))
         self.assertEqual(sonicpi.wrap_gain("play 60\n", 1.0), "play 60\n")
 
-    def test_starters_are_fifteen_per_category(self):
-        cats = sonicpi.categories(sonicpi.load_sketches(sonicpi.STARTER_SKETCHES))
-        self.assertEqual([(c, len(g)) for c, g in cats],
-                         [("Keys", 15), ("Sequencers", 15), ("Grooves", 15), ("Ambient", 15)])
+    def test_starters_fill_the_four_categories(self):
+        sketches = sonicpi.load_sketches(sonicpi.STARTER_SKETCHES)
+        cats = sonicpi.categories(sketches)
+        self.assertEqual([c for c, _ in cats], ["Keys", "Sequencers", "Grooves", "Ambient"])
+        self.assertTrue(all(len(g) >= 15 for _, g in cats))
+        self.assertTrue(all(s.gain != 1.0 or s.title == "Keys" for s in sketches),
+                        [s.title for s in sketches if s.gain == 1.0 and s.title != "Keys"])   # all levelled
 
     def test_errors_are_never_blank(self):
         reserved = ("Runtime Error \n\nbuffer eval, line 1392\nYou may not use the built-in fn names as "

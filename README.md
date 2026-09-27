@@ -201,7 +201,7 @@ Fonts: DejaVu Sans (`pitop_weather/fonts/LICENSE`).
 
 ## The sketches
 
-[Keys (15)](#keys) · [Sequencers (15)](#sequencers) · [Grooves (15)](#grooves) · [Ambient (15)](#ambient)
+[Keys (15)](#keys) · [Sequencers (19)](#sequencers) · [Grooves (15)](#grooves) · [Ambient (19)](#ambient)
 
 ### Keys
 
@@ -356,6 +356,26 @@ A 16-step bassline where some steps "ratchet" into 2-4 fast repeats. Keys set th
 *`46-your-arp.rb`*: The last four notes you play become the arpeggio.
 
 Played up, down, up-and-down, then at random, changing every four bars. Play four new notes to change the chord.
+
+#### Shepard staircase
+*`65-shepard-staircase.rb`*: A scale that rises forever and never gets higher.
+
+An auditory illusion: every note is played in eight octaves at once, the middle ones loud and the outer ones faint, so each step sounds higher yet the whole thing never climbs out of range. Keys below middle C make it fall, middle C and above make it rise.
+
+#### Canon
+*`66-canon.rb`*: Whatever you play comes back as a round.
+
+A second voice answers a fifth higher two beats later, and a third an octave up two beats after that, like a round sung by three people. Play slow phrases and let them tangle.
+
+#### Life
+*`67-life.rb`*: Conway's Game of Life, played column by column.
+
+An 8x8 grid evolves every bar. The music reads it left to right: each live cell in a column plays its row's note. If the grid dies out or gets stuck it reseeds itself. Each key you play brings a cell to life in the column being played, in the row matching your note.
+
+#### Wave melody
+*`68-wave-melody.rb`*: A tune traced by two slow waves.
+
+Two sine waves at unrelated speeds are added together and read off a scale, so the melody rises and falls in long, never-quite-repeating arcs. A key sets the key of the scale.
 
 ### Grooves
 
@@ -514,5 +534,25 @@ No keys needed. Crickets chirping at their own rates, a frog now and then, the o
 *`60-glacier.rb`*: Vast, very slow chords that barely move.
 
 No keys needed. Each chord swells in over ten seconds and changes every twenty, over a deep sub and a distant choir. Keys hold long, soft notes.
+
+#### Tape loops
+*`61-tape-loops.rb`*: A phrase that wears away a little more each time round.
+
+After William Basinski's Disintegration Loops: the same short phrase repeats, and on every pass it gets duller, dustier and more broken, until a fresh copy takes over. No keys needed; keys play electric piano on top.
+
+#### Singing bowls
+*`62-singing-bowls.rb`*: Struck bowls with long, shimmering tails.
+
+Each bowl rings with its own out-of-tune overtones, and each overtone is doubled a hair sharp, so it slowly beats and swirls. No keys needed; keys strike a bowl at your note.
+
+#### Night train
+*`63-night-train.rb`*: A distant train rolling through the dark.
+
+A low rumble, wheels clacking over the rail joints, a horn far off and now and then a station chime. No keys needed; keys ring soft bells.
+
+#### Overtones
+*`64-overtones.rb`*: A drone made of one note's natural harmonics.
+
+The first sixteen harmonics of a low C fade in and out one at a time, so the chord hiding inside a single note slowly reveals itself. Keys move the low note; the harmonics follow over the next few seconds.
 
 <!-- sketches:end -->
