@@ -89,8 +89,15 @@ in the first time (later additions: `cp -n sketches/*.rb ~/sonicpi-sketches/`):
 | 13 | **Finger drums**: the keys play a drum kit | ✓ |
 | 14 | **Rain on the roof**: the rain, heavier when it's really raining, with piano on the keys | ✓ |
 | 15 | **Bells**: slow bells with a cathedral tail | ✓ |
+| 16 | **Evolving sequencer**: a 16-step pattern that mutates every bar; low keys change the key, high keys write notes in and pick the mode, and playing a lot raises the energy | ✓ steers it |
+| 17 | **Copycat**: improvises from which note you tend to play after which | ✓ teaches it |
+| 18 | **Euclid garden**: three evenly spread rhythms drifting in and out of phase; each key retunes a voice and changes how busy it is | ✓ steers it |
+| 19 | **Cellular**: a cellular-automaton melody; white keys flip cells, black keys change the rule | ✓ steers it |
 
-`python3 tools/sketch_check.py sketches/*.rb` runs every sketch on the real Sonic Pi, playing a chromatic MIDI phrase through
+Writing your own: values saved with `set` come back **frozen**. Copy one with `get(:x).to_a.dup` before changing it in place
+(sketches 16, 18 and 19 do this). Use local variables rather than Ruby constants.
+
+`python3 tools/sketch_check.py [--seconds N] sketches/*.rb` runs every sketch on the real Sonic Pi, playing a chromatic MIDI phrase through
 ALSA's Midi Through port so that code triggered by keys runs too, and reports any errors. Write or edit sketches on the Mac and copy them over.
 Before each sketch runs, the station sets `get(:wx_temp)`, `:wx_rain` (mm now), `:wx_wind` (mph), `:wx_code` and `:wx_day`,
 with `:wx_known` false when there's no forecast yet.

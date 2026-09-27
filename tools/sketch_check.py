@@ -32,7 +32,7 @@ def midi_file(path):
         f.write(b"MTrk" + struct.pack(">I", len(ev)) + ev)
 
 
-def main(paths):
+def main(paths, seconds=4.0):
     mid = os.path.join(tempfile.gettempdir(), "sketch-check.mid")
     midi_file(mid)
     e = sonicpi.Engine("~/apps/sonic-pi-5.0.0", os.path.join(REPO, "tools", "trixie-run.sh"))
@@ -51,7 +51,7 @@ def main(paths):
               "set :wx_code, 61; set :wx_day, true\n" + code)
         time.sleep(1.5)
         subprocess.run(["aplaymidi", "-p", "14:0", mid], capture_output=True)
-        time.sleep(2.5)
+        time.sleep(max(0.5, seconds - 1.5))
         status = "ok" if not e.error else "ERROR: " + e.error
         bad += bool(e.error)
         print("%-32s %s" % (os.path.basename(p), status), flush=True)
@@ -61,4 +61,8 @@ def main(paths):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    args = sys.argv[1:]
+    secs = 4.0
+    if args[:1] == ["--seconds"]:
+        secs, args = float(args[1]), args[2:]
+    main(args, secs)
