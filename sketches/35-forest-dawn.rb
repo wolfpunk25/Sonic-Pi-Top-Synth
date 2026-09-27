@@ -44,6 +44,6 @@ with_fx :reverb, room: 0.85, mix: 0.45 do
   live_loop :keys do
     use_real_time
     note, vel = sync "/midi*/note_on"
-    synth :kalimba, note: note, amp: vel / 140.0 if vel > 0
+    synth :kalimba, note: note, amp: vel / 28.0 if vel > 0
   end
 end

@@ -13,7 +13,7 @@ if day
     live_loop :melody do
       use_bpm grey ? 70 : 95
       use_synth :kalimba
-      play notes.choose, amp: 0.6 unless grey && one_in(2)   # sparser when it's grey
+      play notes.choose, amp: 3 unless grey && one_in(2)   # sparser when it's grey
       sleep [0.5, 0.5, 1].choose
     end
     live_loop :bass do

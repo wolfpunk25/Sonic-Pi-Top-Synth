@@ -29,7 +29,7 @@ with_fx :echo, phase: 0.375, decay: 3, mix: 0.25 do
     notes = scale(:a3, :minor_pentatonic, num_octaves: 3)
     row = get(:row)
     16.times do |i|
-      synth :kalimba, note: notes[i], amp: 0.7 if row[i] == 1
+      synth :kalimba, note: notes[i], amp: 3.5 if row[i] == 1
       synth :sine, note: notes[i] - 24, amp: 0.2, release: 0.5 if row[i] == 1 && i % 4 == 0
       sleep 0.25
     end

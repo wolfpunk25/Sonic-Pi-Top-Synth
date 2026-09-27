@@ -42,7 +42,7 @@ live_loop :looper do
     sleep 0.25                # nothing recorded yet
   else
     notes.each_with_index do |n, i|
-      synth :kalimba, note: n, amp: 0.7
+      synth :kalimba, note: n, amp: 4     # kalimba is ~15 dB quieter than other synths
       sleep gaps[i]           # seconds: the default 60 bpm makes a beat one second
     end
   end

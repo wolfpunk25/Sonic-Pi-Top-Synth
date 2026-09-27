@@ -17,7 +17,7 @@ with_fx :reverb, room: 0.4, mix: 0.25 do
   live_loop :left do
     use_bpm 100
     get(:tune).to_a.each do |n|
-      synth :kalimba, note: n, amp: 0.8, pan: -0.7
+      synth :kalimba, note: n, amp: 3.5, pan: -0.7
       sleep 0.25
     end
   end
@@ -25,7 +25,7 @@ with_fx :reverb, room: 0.4, mix: 0.25 do
   live_loop :right do
     use_bpm 101.5
     get(:tune).to_a.each do |n|
-      synth :kalimba, note: n, amp: 0.8, pan: 0.7
+      synth :kalimba, note: n, amp: 3.5, pan: 0.7
       sleep 0.25
     end
   end
