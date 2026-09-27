@@ -314,7 +314,15 @@ class App:
                 i = (titles.index(self.sp_playing) + (1 if action == "next" else -1)) % len(group)
             else:
                 i = 0 if action == "next" else len(group) - 1
-            self.page = self.names.index("sonicpi")      # show what's playing now
+            # show it in the list, scrolled to the new sketch, just as if the
+            # buttons had been used - so Cancel/Up/Down carry on from there
+            cat = group[i].category
+            self.page = self.names.index("sonicpi")
+            self.sp_browsing, self.browsing = True, False
+            cats = [r[1] for r in self.sp_rows() if r[0] == "cat"] if self.sp_cat is None else \
+                [n for n, _ in sonicpi.categories(self.sketches)]
+            self.sp_cat_cursor = cats.index(cat) if cat in cats else 0
+            self.sp_cat, self.sp_cursor = cat, i
             self.play_sketch(group[i])
         self._dirty = True
 

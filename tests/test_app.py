@@ -928,6 +928,24 @@ class TestKeebActions(unittest.TestCase):
         self.assertEqual(self.a.sp_playing_cat, "Keys")
         self.assertEqual(self.a.sp_playing, self.a.sp_group("Keys")[-1].title)   # wraps
 
+    def test_next_scrolls_the_list_like_the_buttons(self):
+        self.act("next")
+        self.act("next")
+        self.act("next")
+        a = self.a
+        self.assertTrue(a.sp_browsing)
+        self.assertEqual(a.sp_cat, "Keys")
+        self.assertEqual(a.sp_rows()[a.sp_cursor][1].title, a.sp_playing)      # cursor on the playing one
+        a.frame()
+        self.assertEqual(a.status.sp.title, "Keys")
+        marked = [label for label, _, mark in a.status.sp.rows if mark == ">"]
+        self.assertEqual(marked, [a.sp_playing])
+        self.assertEqual(a.sp_playing, "Echo keys")                              # Keys, Chords, Echo keys
+        press(a, "cancel", self.clk, 0.1)                                        # back up to the categories
+        self.assertIsNone(a.sp_cat)
+        self.assertEqual(a.sp_rows()[a.sp_cursor][1], "Keys")
+        self.assertEqual(a.sp_playing, "Echo keys")                              # still playing
+
     def test_stop_and_output(self):
         self.act("next")
         self.act("stop")
