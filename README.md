@@ -106,6 +106,30 @@ dies, Sonic Pi shuts itself down within 3 s. Idle, Sonic Pi uses about 5 % of on
 The audio buffer is 128 samples (about 2.7 ms). At 128 and 256, glitches only happen in the first 2 s after start-up, never while
 playing, even with chords and drums together.
 
+## Bluetooth MIDI controllers
+
+Any controller that advertises Bluetooth MIDI connects by itself: no pairing, no cable. It shows on the Sonic Pi
+page as, for example, "MIDI: Lydian7 (BT)". `btmidi-autoconnect.service` (`pitop_weather/btmidi.py`):
+
+- scans only for devices advertising the Bluetooth MIDI service, and only while no controller is connected
+  (scanning alongside a connection can add latency on the Pi's shared Wi-Fi/Bluetooth chip);
+- reconnects when a controller comes back (switched on, back in range);
+- backs off from a controller that keeps failing: 5 s, then 10, 20... up to 2 minutes;
+- keeps the Bluetooth adapter powered on.
+
+To skip a device, add `[bluetooth_midi]` with `ignore = Name, Other name` to `~/.config/pitop-weather.ini`.
+The log is `~/.cache/pitop-weather/btmidi.log`.
+
+**This needs bluetoothd's MIDI plugin.** On the pi-top, a leftover drop-in from pi-top's Further Link
+(`/usr/lib/systemd/system/bluetooth.service.d/10-experimental-mode.conf`) starts bluetoothd with only the `gatt`
+and `hostname` plugins, so controllers connected but no MIDI port appeared. `install.sh` adds
+`/etc/systemd/system/bluetooth.service.d/20-midi.conf` (`bluetooth-midi.conf` here), with the same command line
+plus `midi`. Delete it to undo.
+
+Tested: an ESP32 box with Arduino BLE MIDI connected first time and reconnected by itself after a deliberate
+disconnect. A CircuitPython (`adafruit_ble_midi`) controller connects but often drops straight away (bluetoothd:
+"MIDI I/O: Failed to read initial request"). That one is unresolved.
+
 ## Alerts
 
 The box speaks without being asked in two cases. Both are silent during quiet hours (22:00–08:00)

@@ -110,6 +110,23 @@ def short_error(text: str) -> str:
     return "Error (see Sonic Pi log)"
 
 
+def port_name(port: str) -> str:
+    """ALSA/Sonic Pi port id -> a readable name:
+    "c_major_seven_c_major_seven_out_32_0" -> "C Major Seven"
+    "lydian7_lydian7_bluetooth_132_0"      -> "Lydian7 (BT)"   (BlueZ's port)"""
+    n = re.sub(r"_(out|in)?_?\d+_\d+$", "", port)
+    words = n.split("_")
+    bt = words[-1:] == ["bluetooth"]
+    if bt:
+        words = words[:-1]
+    for size in range(len(words) // 2, 0, -1):          # "x_y_x_y" -> "x_y"
+        if words[:size] == words[size:2 * size]:
+            words = words[:size] + words[2 * size:]
+            break
+    name = " ".join(w if w[:1].isdigit() else w.capitalize() for w in words)
+    return name + (" (BT)" if bt else "")
+
+
 def parse_ports(args) -> List[str]:
     """/midi/in-ports sends one string, a line per port: "<enabled>\t<name>".
     Returns the enabled ports, leaving out ALSA's built-in Midi Through."""
@@ -376,12 +393,5 @@ class Engine:
 
     @property
     def midi_name(self) -> str:
-        if not self.midi_in:
-            return ""
-        # "c_major_seven_c_major_seven_out_32_0" -> "C Major Seven"
-        n = re.sub(r"_(out|in)?_?\d+_\d+$", "", self.midi_in[0])
-        words = n.split("_")
-        half = len(words) // 2
-        if half and words[:half] == words[half:]:
-            words = words[:half]
-        return " ".join(w.capitalize() for w in words)
+        """Every connected controller, e.g. "C Major Seven + Lydian7 (BT)"."""
+        return " + ".join(port_name(p) for p in self.midi_in)

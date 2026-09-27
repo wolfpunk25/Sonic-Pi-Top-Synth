@@ -1,0 +1,16 @@
+[Unit]
+Description=Connect Bluetooth MIDI controllers automatically
+After=bluetooth.target
+
+[Service]
+WorkingDirectory=%h/pitop-weather
+ExecStart=/usr/bin/python3 -m pitop_weather.btmidi
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+# the user journal isn't kept on this Pi, so keep a log file instead
+StandardOutput=append:%h/.cache/pitop-weather/btmidi.log
+StandardError=inherit
+
+[Install]
+WantedBy=default.target

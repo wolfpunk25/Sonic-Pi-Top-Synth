@@ -757,6 +757,30 @@ class TestSonicPiPieces(unittest.TestCase):
         e.midi_in = ports
         self.assertEqual(e.midi_name, "C Major Seven")
 
+    def test_port_names(self):
+        self.assertEqual(sonicpi.port_name("c_major_seven_c_major_seven_out_32_0"), "C Major Seven")
+        self.assertEqual(sonicpi.port_name("lydian7_lydian7_bluetooth_132_0"), "Lydian7 (BT)")
+        self.assertEqual(sonicpi.port_name("wolfpunk_wolfpunk_bluetooth_132_0"), "Wolfpunk (BT)")
+        e = sonicpi.Engine("x", "y")
+        e.midi_in = ["c_major_seven_c_major_seven_out_32_0", "lydian7_lydian7_bluetooth_132_0"]
+        self.assertEqual(e.midi_name, "C Major Seven + Lydian7 (BT)")
+
+    def test_btmidi_backoff(self):
+        from pitop_weather import btmidi
+        t = [100.0]
+        b = btmidi.Backoff(clock=lambda: t[0])
+        self.assertTrue(b.ready("d"))
+        gaps = [b.failed("d") for _ in range(8)]
+        self.assertEqual(gaps[:3], [5.0, 10.0, 20.0])
+        self.assertEqual(gaps[-1], btmidi.MAX_BACKOFF)
+        self.assertFalse(b.ready("d"))
+        t[0] += btmidi.MAX_BACKOFF
+        self.assertTrue(b.ready("d"))
+        b.succeeded("d")
+        self.assertEqual(b.failed("d"), 5.0)
+        self.assertTrue(btmidi.is_midi({"UUIDs": ["03B80E5A-EDE8-4B33-A751-6CE34EC4C700"]}))
+        self.assertFalse(btmidi.is_midi({"UUIDs": ["0000180f-0000-1000-8000-00805f9b34fb"]}))
+
     def test_weather_header_is_one_line(self):
         self.assertEqual(sonicpi.weather_header(weather()).count("\n"), 1)
         self.assertEqual(sonicpi.weather_header(None), "set :wx_known, false\n")
