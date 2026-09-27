@@ -16,7 +16,7 @@ import time
 from datetime import datetime, time as dtime
 from typing import Callable, List, Optional
 
-from . import forecast, recorder, render, speech
+from . import audio, forecast, recorder, render, sonicpi, speech
 
 HOLD_TO_QUIT = 2.0          # seconds holding Cancel hands the screen back
 BATTERY_POLL = 30.0
@@ -24,6 +24,7 @@ MIC_POLL = 5.0              # how often the Record page looks for a newly plugge
 NOTICE_SECONDS = 6.0
 RETRY_AFTER_ERROR = 120.0
 CACHE = os.path.expanduser("~/.cache/pitop-weather")
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class Config:
@@ -35,7 +36,10 @@ class Config:
                           "start_page": "now",
                           "rain_alert_minutes": "30", "battery_warnings": "20, 10",
                           "quiet_from": "22:00", "quiet_until": "08:00"},
-            "voice": {"voice": "en-gb", "speed": "150", "volume": "100"},
+            "voice": {"voice": "en-gb", "speed": "150", "volume": "100", "output": "speaker"},
+            "sonicpi": {"app_dir": "~/apps/sonic-pi-5.0.0",
+                        "runner": os.path.join(REPO, "tools", "trixie-run.sh"),
+                        "sketches": "~/sonicpi-sketches", "buffer_size": "128", "output": "usb"},
             "recorder": {"folder": "~/soundwalks", "seconds": "60", "device": "default",
                          "sample_rate": "48000", "announce": "yes"},
         })
@@ -60,6 +64,13 @@ class Config:
         self.rec_device = r["device"]
         self.rec_rate = r.getint("sample_rate")
         self.rec_announce = r.getboolean("announce")
+        self.voice_output = v["output"]
+        sp = c["sonicpi"]
+        self.sp_dir = os.path.expanduser(sp["app_dir"])
+        self.sp_runner = os.path.expanduser(sp["runner"])
+        self.sp_sketches = os.path.expanduser(sp["sketches"])
+        self.sp_buffer = sp.getint("buffer_size")
+        self.sp_output = sp["output"]
 
 
 def _hhmm(s: str) -> dtime:
@@ -77,7 +88,8 @@ def in_quiet_hours(now: datetime, start: dtime, end: dtime) -> bool:
 class App:
     def __init__(self, hw: "Hardware", cfg: Config, speaker, clock: Callable[[], float] = time.time,
                  local_now: Callable[[], datetime] = datetime.now, rec=None, player=None,
-                 find_mic: Callable[[], Optional[str]] = recorder.find_mic):
+                 find_mic: Callable[[], Optional[str]] = recorder.find_mic, engine=None,
+                 outputs: Callable[[], List[str]] = audio.roles_present):
         self.hw, self.cfg, self.speaker = hw, cfg, speaker
         self.rec = rec or recorder.Recorder(cfg.rec_folder, cfg.rec_rate, cfg.rec_seconds,
                                             device=cfg.rec_device)
@@ -91,13 +103,27 @@ class App:
         self.notice = ""
         self.notice_until = 0.0
         self.place_info: Optional[tuple] = None     # (lat, lon, name) once resolved
+        # Sonic Pi: None when it isn't installed
+        if engine is None and os.path.isdir(cfg.sp_dir):
+            engine = sonicpi.Engine(cfg.sp_dir, cfg.sp_runner, cfg.sp_buffer, cfg.sp_output)
+        self.engine = engine
+        if engine is not None:
+            engine.on_change = self.engine_changed
+        self.outputs = outputs
+        self.sketches: List[sonicpi.Sketch] = []
+        self.sp_browsing = False
+        self.sp_cursor = 0
+        self.sp_playing: Optional[str] = None     # title of the running sketch
+        self.sp_pending: Optional[sonicpi.Sketch] = None
+        self.sp_started_at = 0.0
         self._last_mic_poll = -1e9
         self.clock, self.local_now = clock, local_now
         self.events: "queue.Queue[tuple]" = queue.Queue()
         self.names = [n for n, _ in render.PAGES]
         self.page = self.names.index(cfg.start_page) if cfg.start_page in self.names else 0
         self.weather: Optional[forecast.Weather] = None
-        self.status = render.Status(rec=render.RecView(max_seconds=cfg.rec_seconds))
+        self.status = render.Status(rec=render.RecView(max_seconds=cfg.rec_seconds),
+                                    sp=render.SpView())
         self.last_input = clock()
         self.saver = False
         self.cancel_down_at: Optional[float] = None
@@ -136,6 +162,9 @@ class App:
         if self.browsing:
             self.handle_browse(name)
             return
+        if self.sp_browsing:
+            self.handle_sonicpi(name)
+            return
         page = self.names[self.page]
         if name == "up":
             self.page = (self.page - 1) % len(self.names)
@@ -143,6 +172,8 @@ class App:
             self.page = (self.page + 1) % len(self.names)
         elif name == "select" and page == "record":
             self.start_recording()
+        elif name == "select" and page == "sonicpi":
+            self.open_sonicpi()
         elif name == "select" and page == "clips":
             self.refresh_clips()
             if self.clips:
@@ -174,6 +205,80 @@ class App:
         elif name == "cancel":
             self.player.stop()
             self.browsing = False
+
+    # ---- Sonic Pi ------------------------------------------------------
+
+    def open_sonicpi(self):
+        if self.engine is None:
+            return
+        if self.cfg.sp_sketches:
+            sonicpi.install_starters(self.cfg.sp_sketches)
+        self.sketches = sonicpi.load_sketches(self.cfg.sp_sketches)
+        self.sp_browsing = True
+        self.sp_cursor = min(self.sp_cursor, len(self.sketches))
+        if self.engine.state in ("off", "error"):
+            self.engine.start()
+
+    def handle_sonicpi(self, name: str):
+        last = len(self.sketches)            # the row after the sketches is "Output"
+        if name == "up":
+            self.sp_cursor = max(0, self.sp_cursor - 1)
+        elif name == "down":
+            self.sp_cursor = min(last, self.sp_cursor + 1)
+        elif name == "select" and self.sp_cursor == last:
+            self.cycle_output()
+        elif name == "select":
+            self.play_sketch(self.sketches[self.sp_cursor])
+        elif name == "cancel":
+            if self.sp_playing or self.sp_pending:
+                self.engine.stop_all()
+                self.sp_playing = self.sp_pending = None
+            else:
+                self.sp_browsing = False
+
+    def play_sketch(self, sketch: "sonicpi.Sketch"):
+        if self.engine.state in ("off", "error"):
+            self.engine.start()
+        if self.engine.state != "ready":
+            self.sp_pending = sketch            # runs as soon as Sonic Pi is up
+            return
+        self.speaker.stop()
+        self.engine.stop_all()
+        try:
+            code = sketch.code()
+        except OSError as e:
+            self.engine.error = str(e)
+            return
+        self.engine.run(sonicpi.weather_header(self.view()) + code)
+        self.sp_playing, self.sp_pending = sketch.title, None
+        self.sp_started_at = self.clock()
+
+    def cycle_output(self):
+        roles = self.outputs() or ["default"]
+        cur = self.engine.output
+        nxt = roles[(roles.index(cur) + 1) % len(roles)] if cur in roles else roles[0]
+        self.engine.set_output(nxt)
+        self._dirty = True
+
+    def engine_changed(self):
+        """Called from the engine's threads."""
+        if self.engine.state == "ready" and self.sp_pending is not None:
+            self.events.put(("_sp_pending", True))
+        if self.engine.state in ("off", "error"):
+            self.sp_playing = None
+        self._dirty = True
+
+    def sp_view(self):
+        v = self.status.sp
+        e = self.engine
+        v.installed = e is not None
+        if e is None:
+            return
+        v.state, v.midi, v.output = e.state, e.midi_name, audio.LABELS.get(e.output, e.output)
+        v.titles = [s.title for s in self.sketches]
+        v.browsing, v.cursor, v.playing = self.sp_browsing, self.sp_cursor, self.sp_playing
+        v.pending = self.sp_pending.title if self.sp_pending else None
+        v.error = e.error if e.error and self.clock() - e.error_at < 15 else ""
 
     def check_hold(self):
         if self.cancel_down_at is not None and self.clock() - self.cancel_down_at >= HOLD_TO_QUIT:
@@ -316,11 +421,13 @@ class App:
         if not self.saver and now - self.last_input >= self.cfg.saver_after:
             self.saver = True
             self.browsing = False
+            self.sp_browsing = False      # music, if any, keeps playing
         if self.saver:
             return render.screensaver(w, self.local_now(), int(now // 60))
         self.status.now = self.local_now()
         self.rec_view()
-        if w is None and self.names[self.page] not in ("record", "clips"):
+        self.sp_view()
+        if w is None and self.names[self.page] not in ("record", "clips", "sonicpi"):
             return render.message("Weather", "Fetching forecast\nfor %s..." % self.cfg.place +
                                   ("\n" + self.status.error if self.status.error else ""))
         return render.PAGES[self.page][1](w, self.status)
@@ -339,7 +446,11 @@ class App:
                 name, down = self.events.get_nowait()
             except queue.Empty:
                 break
-            self.handle(name, down)
+            if name == "_sp_pending":
+                if self.sp_pending is not None:
+                    self.play_sketch(self.sp_pending)
+            else:
+                self.handle(name, down)
             pressed = True
         self.check_hold()
         self.poll_battery()
@@ -489,7 +600,7 @@ def main(argv: Optional[List[str]] = None):
     a = ap.parse_args(argv)
     cfg = Config(a.config)
     hw = PiTop()
-    spk = speech.Speaker(cfg.voice, cfg.speed, cfg.volume)
+    spk = speech.Speaker(cfg.voice, cfg.speed, cfg.volume, cfg.voice_output)
     app = App(hw, cfg, spk)
 
     def stop(*_):
@@ -507,6 +618,8 @@ def main(argv: Optional[List[str]] = None):
             app.rec.stop()
             app.rec.wait(5)
         app.player.stop()
+        if app.engine is not None:
+            app.engine.exit()
         spk.stop()
         hw.close()   # the pi-top system menu takes the screen back from here
 

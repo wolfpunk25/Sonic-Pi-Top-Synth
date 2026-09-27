@@ -40,6 +40,22 @@ class Status:
     error: str = ""
     now: Optional[datetime] = None       # local time, for pages that work without a forecast
     rec: Optional["RecView"] = None
+    sp: Optional["SpView"] = None
+
+
+@dataclass
+class SpView:
+    """Everything the Sonic Pi page needs to know."""
+    installed: bool = False
+    state: str = "off"            # off / starting / ready / error
+    midi: str = ""
+    output: str = ""
+    titles: list = field(default_factory=list)
+    browsing: bool = False
+    cursor: int = 0
+    playing: Optional[str] = None
+    pending: Optional[str] = None
+    error: str = ""
 
 
 @dataclass
@@ -532,10 +548,60 @@ def page_clips(w: Optional[Weather], st: Status) -> Image.Image:
     return img
 
 
+def page_sonicpi(w: Optional[Weather], st: Status) -> Image.Image:
+    img, d = new()
+    v = st.sp or SpView()
+    title = "Sonic Pi" + ("..." if v.state == "starting" else "")
+    header(d, title, st.now or w.now, st)
+    if not v.installed:
+        d.text((0, 13), "Not installed", font=font(12, True), fill=1)
+        d.text((0, 30), "Expected in", font=font(9), fill=1)
+        d.text((0, 41), "~/apps/sonic-pi-5.0.0", font=fit(d, "~/apps/sonic-pi-5.0.0", 9, W), fill=1)
+        return img
+    if not v.browsing:
+        if v.playing:
+            big = "Playing"
+            sub = v.playing
+        elif v.pending:
+            big, sub = "Starting...", v.pending
+        else:
+            big = {"off": "Off", "starting": "Starting...", "ready": "Ready", "error": "Stopped"}.get(v.state, v.state)
+            sub = "Select: sketches" if v.state != "starting" else "about 3 seconds"
+        d.text((0, 11), big, font=font(12, True), fill=1)
+        d.text((0, 25), sub, font=fit(d, sub, 10, W), fill=1)
+        midi = "MIDI: " + (v.midi or ("none" if v.state == "ready" else "-"))
+        d.text((0, 38), midi, font=fit(d, midi, 9, W), fill=1)
+        out = "Out: " + (v.output or "-")
+        d.text((0, 49), out, font=fit(d, out, 9, W), fill=1)
+    else:
+        rows = [(t, t == v.playing, t == v.pending) for t in v.titles]
+        rows.append(("Output: " + (v.output or "-"), False, False))
+        rh = 13
+        n = 4 if not v.error else 3
+        first = max(0, min(v.cursor - 1, len(rows) - n))
+        for i, (label, playing, pending) in enumerate(rows[first:first + n]):
+            idx = first + i
+            y = 11 + i * rh
+            sel = idx == v.cursor
+            if sel:
+                d.rectangle([0, y, W - 1, y + rh - 1], fill=1)
+            mark = ">" if playing else ("~" if pending else " ")
+            f = font(10, playing) if idx < len(v.titles) else font(9)
+            d.text((1, y), mark, font=font(10, True), fill=0 if sel else 1)
+            d.text((10, y), label, font=fit(d, label, 10, W - 12, playing) if idx < len(v.titles) else f,
+                    fill=0 if sel else 1)
+    if v.error:
+        # errors sit in an inverse bar along the bottom until they time out
+        d.rectangle([0, 52, W - 1, H - 1], fill=1)
+        d.text((1, 52), v.error, font=fit(d, v.error, 9, W - 2), fill=0)
+    return img
+
+
 PAGES = [
     ("now", page_now),
     ("record", page_record),
     ("clips", page_clips),
+    ("sonicpi", page_sonicpi),
     ("next", page_next),
     ("rain", page_rain),
     ("wind", page_wind),

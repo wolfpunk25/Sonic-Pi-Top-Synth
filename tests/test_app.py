@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from datetime import datetime, time as dtime, timedelta
 
-from pitop_weather import app, forecast, recorder, render, speech
+from pitop_weather import app, forecast, recorder, render, sonicpi, speech
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SAMPLE = json.load(open(os.path.join(HERE, "sample_london.json")))
@@ -93,17 +93,50 @@ class FakePlayer:
         self.playing = None
 
 
-def make_app(local=NIGHT, mic="Fake USB Mic", source_seconds=3.0, **cfg):
+class FakeEngine:
+    """Sonic Pi without Sonic Pi. start() leaves it 'starting' until boot()."""
+
+    def __init__(self):
+        self.state, self.error, self.error_at = "off", "", 0.0
+        self.output, self.midi_name = "usb", "C Major Seven"
+        self.ran, self.stops, self.starts, self.outputs_set = [], 0, 0, []
+        self.on_change = lambda: None
+
+    def start(self):
+        self.starts += 1
+        self.state = "starting"
+
+    def boot(self):
+        self.state = "ready"
+        self.on_change()
+
+    def run(self, code):
+        self.ran.append(code)
+
+    def stop_all(self):
+        self.stops += 1
+
+    def set_output(self, role):
+        self.output = role
+        self.outputs_set.append(role)
+
+    def exit(self):
+        self.state = "off"
+
+
+def make_app(local=NIGHT, mic="Fake USB Mic", source_seconds=3.0, engine=None, **cfg):
     c = app.Config(None)
     c.quiet_from = c.quiet_until = dtime(0, 0)   # never quiet unless a test says so
     c.rec_folder = tempfile.mkdtemp(prefix="soundwalks-")
+    c.sp_sketches = tempfile.mkdtemp(prefix="sketches-")
     for k, v in cfg.items():
         setattr(c, k, v)
     hw, spk, clk = FakeHW(), FakeSpeaker(), Clock()
     rec = recorder.Recorder(c.rec_folder, rate=8000, max_seconds=c.rec_seconds,
                             source_factory=lambda: FakeSource(source_seconds))
     a = app.App(hw, c, spk, clock=clk, local_now=lambda: local, rec=rec,
-                player=FakePlayer(), find_mic=lambda: mic)
+                player=FakePlayer(), find_mic=lambda: mic, engine=engine,
+                outputs=lambda: ["usb", "speaker"])
     return a, hw, spk, clk
 
 
@@ -187,7 +220,7 @@ class TestSpeech(unittest.TestCase):
         st = render.Status(battery=40, minutes_left=95)
         for w in (weather(), weather(now=AFTERNOON), weather(with_rain([0, 0, 1, 1, 0, 0, 0, 0, 0]))):
             for name, _ in render.PAGES:
-                if name in ("record", "clips"):     # Select records/browses there
+                if name in ("record", "clips", "sonicpi"):   # Select records/browses there
                     continue
                 s = speech.SAY[name](w, st)
                 self.assertTrue(s and s.endswith("."), (name, s))
@@ -517,3 +550,141 @@ class TestRecordingInApp(unittest.TestCase):
         goto(a, "clips")
         press(a, "select")
         self.assertTrue(a.frame().getbbox())
+
+
+class TestSonicPi(unittest.TestCase):
+    def setUp(self):
+        self.eng = FakeEngine()
+        self.a, self.hw, self.spk, self.clk = make_app(engine=self.eng)
+        self.a.set_weather(weather())
+        goto(self.a, "sonicpi")
+
+    def test_select_installs_starters_and_boots(self):
+        press(self.a, "select")
+        self.assertTrue(self.a.sp_browsing)
+        self.assertEqual(self.eng.starts, 1)
+        titles = [s.title for s in self.a.sketches]
+        self.assertEqual(titles, ["Keys", "Chords", "Arpeggio", "Beat and keys", "Weather drift"])
+
+    def test_sketch_chosen_while_starting_plays_when_ready(self):
+        press(self.a, "select")
+        press(self.a, "down")
+        press(self.a, "select")            # Chords, before Sonic Pi is up
+        self.assertEqual(self.eng.ran, [])
+        self.assertEqual(self.a.sp_pending.title, "Chords")
+        self.eng.boot()                    # from the engine's thread...
+        self.a.tick()                      # ...and picked up on the main loop
+        self.assertEqual(len(self.eng.ran), 1)
+        self.assertIn("with_fx :reverb", self.eng.ran[0])
+        self.assertTrue(self.eng.ran[0].startswith("set :wx_known, true; set :wx_temp, 16.2"))
+        self.assertEqual(self.a.sp_playing, "Chords")
+
+    def test_cancel_stops_then_leaves(self):
+        press(self.a, "select")
+        self.eng.boot()
+        press(self.a, "select")            # play Keys
+        self.assertEqual(self.a.sp_playing, "Keys")
+        press(self.a, "cancel", self.clk, 0.1)
+        self.assertIsNone(self.a.sp_playing)
+        self.assertTrue(self.a.sp_browsing)
+        self.assertGreaterEqual(self.eng.stops, 2)
+        press(self.a, "cancel", self.clk, 0.1)
+        self.assertFalse(self.a.sp_browsing)
+        self.assertEqual(self.a.names[self.a.page], "sonicpi")
+
+    def test_new_sketch_replaces_old(self):
+        press(self.a, "select")
+        self.eng.boot()
+        press(self.a, "select")
+        press(self.a, "down")
+        press(self.a, "select")
+        self.assertEqual(self.a.sp_playing, "Chords")
+        self.assertEqual(len(self.eng.ran), 2)
+
+    def test_output_row_toggles(self):
+        press(self.a, "select")
+        self.eng.boot()
+        for _ in range(10):
+            press(self.a, "down")          # clamps on the last row, "Output"
+        self.assertEqual(self.a.sp_cursor, len(self.a.sketches))
+        press(self.a, "select")
+        press(self.a, "select")
+        self.assertEqual(self.eng.outputs_set, ["speaker", "usb"])
+
+    def test_music_keeps_playing_off_the_page(self):
+        press(self.a, "select")
+        self.eng.boot()
+        press(self.a, "select")
+        press(self.a, "cancel", self.clk, 0.1)   # stops...
+        press(self.a, "select")                   # ...plays again
+        press(self.a, "cancel", self.clk, 0.1)   # stop
+        press(self.a, "select")
+        self.a.sp_browsing = False                # e.g. the screensaver closed the list
+        press(self.a, "up")
+        self.assertEqual(self.a.names[self.a.page], "clips")
+        self.assertEqual(self.a.sp_playing, "Keys")
+
+    def test_error_shows_and_times_out(self):
+        press(self.a, "select")
+        self.eng.boot()
+        self.eng.error, self.eng.error_at = "Runtime Error x", self.clk.t
+        self.a.frame()
+        self.assertEqual(self.a.status.sp.error, "Runtime Error x")
+        self.clk.t += 20
+        self.a.frame()
+        self.assertEqual(self.a.status.sp.error, "")
+
+    def test_every_state_renders(self):
+        self.a.frame()
+        press(self.a, "select")
+        self.assertTrue(self.a.frame().getbbox())      # starting
+        self.eng.boot()
+        press(self.a, "select")
+        self.eng.error, self.eng.error_at = "Syntax Error", self.clk.t
+        self.assertTrue(self.a.frame().getbbox())      # list, playing, error bar
+        self.a.sp_browsing = False
+        self.assertTrue(self.a.frame().getbbox())      # summary
+
+    def test_not_installed(self):
+        a, hw, spk, clk = make_app()
+        a.engine = None
+        goto(a, "sonicpi")
+        press(a, "select")
+        self.assertFalse(a.sp_browsing)
+        self.assertTrue(a.frame().getbbox())
+
+    def test_speech_is_silenced_by_a_new_sketch(self):
+        press(self.a, "select")
+        self.eng.boot()
+        self.spk.busy = True
+        press(self.a, "select")
+        self.assertFalse(self.spk.busy)
+
+
+class TestSonicPiPieces(unittest.TestCase):
+    def test_parse_osc_roundtrip(self):
+        addr, args = sonicpi.parse_osc(sonicpi.osc("/x", 5, "hello", -2))
+        self.assertEqual((addr, args), ("/x", [5, "hello", -2]))
+
+    def test_ports_and_names(self):
+        ports = sonicpi.parse_ports(["1\tmidi_through_midi_through_port-0_14_0\n"
+                                     "1\tc_major_seven_c_major_seven_out_32_0\n0\tsomething_off_1_0"])
+        self.assertEqual(ports, ["c_major_seven_c_major_seven_out_32_0"])
+        e = sonicpi.Engine("x", "y")
+        e.midi_in = ports
+        self.assertEqual(e.midi_name, "C Major Seven")
+
+    def test_weather_header_is_one_line(self):
+        self.assertEqual(sonicpi.weather_header(weather()).count("\n"), 1)
+        self.assertEqual(sonicpi.weather_header(None), "set :wx_known, false\n")
+
+    def test_short_errors(self):
+        self.assertEqual(sonicpi.short_error("Runtime Error Sonic Pi doesn't know a function called `wobble`"),
+                         "Unknown: wobble")
+        self.assertEqual(sonicpi.short_error("Syntax Error Sonic Pi couldn't read your code"), "Syntax error")
+        self.assertEqual(sonicpi.short_error("Runtime Error [buffer 3, line 4] - ZeroDivisionError"),
+                         "[buffer 3, line 4] - ZeroDivisionError")
+
+    def test_run_before_ready_is_refused(self):
+        e = sonicpi.Engine("x", "y")
+        self.assertFalse(e.run("play 60"))

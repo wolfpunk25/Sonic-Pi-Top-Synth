@@ -5,12 +5,15 @@ runs espeak-ng in the background so a long sentence never freezes the screen.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import tempfile
 import threading
 from datetime import datetime
 from typing import Optional
 
+from . import audio
 from .forecast import Weather, compass, describe
 from .render import Status, barometer_word, uv_word
 
@@ -122,13 +125,21 @@ def briefing(w: Weather, st: Status) -> str:
 
 
 class Speaker:
-    """Speaks one thing at a time; a new request cuts off the old one."""
+    """Speaks one thing at a time; a new request cuts off the old one.
 
-    def __init__(self, voice: str = "en-gb", speed: int = 150, volume: int = 100):
+    With an output role ("speaker" / "usb") the speech is rendered to a WAV
+    and played with pw-play --target, so it can go to the pi-top's speaker
+    while music plays on the USB card. (Piping espeak into pw-play instead
+    plays 2.2x too fast: espeak makes 22050 Hz and pw-play ignores the header
+    on a pipe.)"""
+
+    def __init__(self, voice: str = "en-gb", speed: int = 150, volume: int = 100,
+                 output: str = "default"):
         self.cmd = shutil.which("espeak-ng") or shutil.which("espeak")
-        self.voice, self.speed, self.volume = voice, speed, volume
+        self.voice, self.speed, self.volume, self.output = voice, speed, volume, output
         self._proc: Optional[subprocess.Popen] = None
         self._lock = threading.Lock()
+        self._gen = 0
 
     @property
     def available(self) -> bool:
@@ -136,6 +147,7 @@ class Speaker:
 
     def stop(self):
         with self._lock:
+            self._gen += 1
             if self._proc and self._proc.poll() is None:
                 self._proc.terminate()
             self._proc = None
@@ -149,8 +161,31 @@ class Speaker:
             print("[speech unavailable] " + text, flush=True)
             return
         self.stop()
+        espeak = [self.cmd, "-v", self.voice, "-s", str(self.speed), "-a", str(self.volume)]
+        target = audio.sink_for(self.output) if self.output != "default" else None
+        if target is None:
+            with self._lock:
+                self._proc = subprocess.Popen(espeak + [text], stdout=subprocess.DEVNULL,
+                                              stderr=subprocess.DEVNULL)
+            return
         with self._lock:
-            # espeak-ng plays through the default sound device (PipeWire -> speaker)
-            self._proc = subprocess.Popen(
-                [self.cmd, "-v", self.voice, "-s", str(self.speed), "-a", str(self.volume), text],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            gen = self._gen
+        threading.Thread(target=self._say_to, args=(espeak, text, target, gen), daemon=True).start()
+
+    def _say_to(self, espeak, text, target, gen):
+        fd, wav = tempfile.mkstemp(suffix=".wav", prefix="pitop-say-")
+        os.close(fd)
+        try:
+            subprocess.run(espeak + ["-w", wav, text], capture_output=True, timeout=30)
+            with self._lock:
+                if gen != self._gen:        # stopped or replaced while rendering
+                    return
+                self._proc = subprocess.Popen(["pw-play", "--target", target, wav],
+                                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                proc = self._proc
+            proc.wait()
+        finally:
+            try:
+                os.remove(wav)
+            except OSError:
+                pass

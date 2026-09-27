@@ -101,6 +101,31 @@ def recorder_sheet(w, out):
     print(path)
 
 
+def sonicpi_sheet(w, out):
+    """The Sonic Pi page in each of its states."""
+    now = datetime(2026, 9, 27, 12, 5)
+    titles = ["Keys", "Chords", "Arpeggio", "Beat and keys", "Weather drift"]
+
+    def st(**v):
+        base = dict(installed=True, midi="C Major Seven", output="Headphones", titles=titles)
+        base.update(v)
+        return render.Status(battery=64, now=now, sp=render.SpView(**base))
+    frames = [
+        ("off", render.page_sonicpi(w, st(state="off", midi=""))),
+        ("starting, list", render.page_sonicpi(w, st(state="starting", browsing=True, pending="Chords", cursor=1, midi=""))),
+        ("playing, list", render.page_sonicpi(w, st(state="ready", browsing=True, playing="Keys", cursor=0))),
+        ("output row", render.page_sonicpi(w, st(state="ready", browsing=True, playing="Arpeggio", cursor=5))),
+        ("playing, summary", render.page_sonicpi(w, st(state="ready", playing="Weather drift"))),
+        ("error", render.page_sonicpi(w, st(state="ready", browsing=True, cursor=3,
+                                             error="Runtime Error Sonic Pi doesn't know a function called `x`"))),
+        ("no keyboard", render.page_sonicpi(w, st(state="ready", midi="", output="Speaker"))),
+        ("not installed", render.page_sonicpi(w, render.Status(now=now, sp=render.SpView()))),
+    ]
+    path = os.path.join(out, "sonicpi.png")
+    sheet(frames, "Sonic Pi page").save(path)
+    print(path)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--live", metavar="PLACE")
@@ -125,6 +150,7 @@ def main():
         sheet(frames, "%s  -  %s" % (n, w.now.strftime("%a %H:%M"))).save(path)
         print(path)
     recorder_sheet(w, a.out)
+    sonicpi_sheet(w, a.out)
 
 
 if __name__ == "__main__":
