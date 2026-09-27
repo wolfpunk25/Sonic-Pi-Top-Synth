@@ -1,5 +1,6 @@
 # Your arp - the last four notes you play become the arpeggio
 # category: Sequencers
+# gain: 1.08
 # Played up, down, up-and-down, then at random, changing every four bars.
 # Play four new notes to change the chord.
 

@@ -1,5 +1,6 @@
 # Hoover - the old-school rave sound
 # category: Keys
+# gain: 0.45
 # Low notes are the classic; try the bottom octave.
 
 with_fx :reverb, room: 0.5, mix: 0.2 do

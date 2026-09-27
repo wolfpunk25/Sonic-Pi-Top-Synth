@@ -1,6 +1,7 @@
 # Funk - syncopated drums and a slap bass at 104 bpm
 # category: Grooves
 # keys: last
+# gain: 0.55
 # Sixteenth-note hats, a kick that dances round the beat, ghost notes on the
 # snare and a popping bass line. Your keys play your last Keys sound; Organ
 # and Electric piano suit it.

@@ -1,5 +1,6 @@
 # Night crickets - a summer night outside
 # category: Ambient
+# gain: 2.25
 # No keys needed. Crickets chirping at their own rates, a frog now and then,
 # the odd owl, and a low night pad. Keys play a quiet kalimba.
 
