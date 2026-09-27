@@ -16,7 +16,7 @@ import time
 from datetime import datetime, time as dtime
 from typing import Callable, List, Optional
 
-from . import audio, forecast, recorder, render, sonicpi, speech
+from . import audio, forecast, keeb, recorder, render, sonicpi, speech
 
 HOLD_TO_QUIT = 2.0          # seconds holding Cancel hands the screen back
 BATTERY_POLL = 30.0
@@ -40,6 +40,8 @@ class Config:
             "sonicpi": {"app_dir": "~/apps/sonic-pi-5.0.0",
                         "runner": os.path.join(REPO, "tools", "trixie-run.sh"),
                         "sketches": "~/sonicpi-sketches", "buffer_size": "128", "output": "usb"},
+            "keebdeck": {"enabled": "yes", "match": "KeebDeck", "octave": "4", "channel": "1",
+                         "velocity": "100"},
             "recorder": {"folder": "~/soundwalks", "seconds": "60", "device": "default",
                          "sample_rate": "48000", "announce": "yes"},
         })
@@ -71,6 +73,11 @@ class Config:
         self.sp_sketches = os.path.expanduser(sp["sketches"])
         self.sp_buffer = sp.getint("buffer_size")
         self.sp_output = sp["output"]
+        k = c["keebdeck"]
+        self.keeb_enabled = k.getboolean("enabled")
+        self.keeb_match = k["match"]
+        self.keeb_opts = dict(octave=k.getint("octave"), channel=k.getint("channel"),
+                              velocity=k.getint("velocity"))
 
 
 def _hhmm(s: str) -> dtime:
@@ -119,6 +126,7 @@ class App:
         self.sp_cat_cursor = 0                    # where to come back to
         self.sp_with: Optional[str] = None        # the Keys sound added to a "# keys: last" sketch
         self.sp_last_keys = self.load_last_keys()
+        self.sp_notice, self.sp_notice_until = "", 0.0
         self.sp_pending: Optional[sonicpi.Sketch] = None
         self.sp_started_at = 0.0
         self._last_mic_poll = -1e9
@@ -280,6 +288,40 @@ class App:
         self.sp_with = keys.title if keys else None
         self.sp_started_at = self.clock()
 
+    def keeb_action(self, action: str):
+        """The KeebDeck's shape keys: the same things the buttons do."""
+        self.last_input, self.saver = self.clock(), False
+        if action.startswith("status:"):
+            self.show_sp_notice(action[7:])
+            return
+        if self.engine is None:
+            return
+        if action == "stop":
+            self.engine.stop_all()
+            self.sp_playing = self.sp_pending = self.sp_playing_cat = self.sp_with = None
+        elif action == "output":
+            self.cycle_output()
+        elif action in ("prev", "next"):
+            if not self.sketches:
+                if self.cfg.sp_sketches:
+                    sonicpi.install_starters(self.cfg.sp_sketches)
+                self.sketches = sonicpi.load_sketches(self.cfg.sp_sketches)
+            group = self.sp_group(self.sp_playing_cat or self.sp_cat or "Keys")
+            if not group:
+                return
+            titles = [sk.title for sk in group]
+            if self.sp_playing in titles:
+                i = (titles.index(self.sp_playing) + (1 if action == "next" else -1)) % len(group)
+            else:
+                i = 0 if action == "next" else len(group) - 1
+            self.page = self.names.index("sonicpi")      # show what's playing now
+            self.play_sketch(group[i])
+        self._dirty = True
+
+    def show_sp_notice(self, text: str):
+        self.sp_notice, self.sp_notice_until = text, self.clock() + NOTICE_SECONDS
+        self._dirty = True
+
     def keys_sketch(self) -> Optional["sonicpi.Sketch"]:
         """The last Keys sketch played; Pluck (or the first Keys sketch) until then."""
         keys = self.sp_group("Keys")
@@ -342,6 +384,8 @@ class App:
                 t = row[1].title
                 v.rows.append((t, "", ">" if t == v.playing else ("~" if t == v.pending else "")))
         v.error = e.error if e.error and self.clock() - e.error_at < 15 else ""
+        if not v.error and self.sp_notice and self.clock() < self.sp_notice_until:
+            v.error = self.sp_notice                 # shares the bottom bar
 
     def check_hold(self):
         if self.cancel_down_at is not None and self.clock() - self.cancel_down_at >= HOLD_TO_QUIT:
@@ -512,6 +556,8 @@ class App:
             if name == "_sp_pending":
                 if self.sp_pending is not None:
                     self.play_sketch(self.sp_pending)
+            elif name == "_keeb":
+                self.keeb_action(down)
             else:
                 self.handle(name, down)
             pressed = True
@@ -672,6 +718,13 @@ def main(argv: Optional[List[str]] = None):
     signal.signal(signal.SIGINT, stop)
 
     threading.Thread(target=fetcher, args=(app,), daemon=True).start()
+    kd = None
+    if cfg.keeb_enabled:
+        kd = keeb.KeebDeck(cfg.keeb_match,
+                           on_action=lambda a: app.events.put(("_keeb", a)),
+                           on_status=lambda s: app.events.put(("_keeb", "status:" + s)) if s else None,
+                           **cfg.keeb_opts)
+        kd.start()
     try:
         while app.running:
             app.tick()
@@ -681,6 +734,8 @@ def main(argv: Optional[List[str]] = None):
             app.rec.stop()
             app.rec.wait(5)
         app.player.stop()
+        if kd is not None:
+            kd.stop()
         if app.engine is not None:
             app.engine.exit()
         spk.stop()

@@ -106,6 +106,32 @@ dies, Sonic Pi shuts itself down within 3 s. Idle, Sonic Pi uses about 5 % of on
 The audio buffer is 128 samples (about 2.7 ms). At 128 and 256, glitches only happen in the first 2 s after start-up, never while
 playing, even with chords and drums together.
 
+## KeebDeck: a QWERTY keyboard as a MIDI controller
+
+A [Solder Party KeebDeck Basic](https://www.solder.party/docs/keebdeck/basic/) (an ordinary USB keyboard running QMK) plugged
+into the pi-top becomes a MIDI controller. The app grabs it exclusively, so keys don't also type, and plays it on a virtual
+MIDI port, "KeebDeck", that Sonic Pi picks up like any other controller. The keyboard's firmware is untouched.
+(`pitop_weather/keeb.py`; needs `python3-evdev` and `python3-rtmidi`.)
+
+| Keys | Do |
+|---|---|
+| **A S D F G H J K L ; '** | white keys, from middle C up |
+| **W E T Y U O P** | black keys |
+| **Z X C V B N M , . /** | white keys an octave lower |
+| **1–8** | jump to that octave (4 = middle C) |
+| **← →** | octave down / up |
+| **↑ ↓** | transpose a semitone up / down |
+| **□** (F1) | stop the music |
+| **△ / ×** (F2 / F3) | previous / next sketch in the category playing (Keys if nothing is), and show it |
+| **○** (F4) | switch headphones / speaker |
+| **☘** (F5) | sustain: notes hold while it's down |
+| **◇** (F6) | panic: all notes off |
+| **Esc** | let go of the keyboard so it types normally / take it back |
+
+The six shape keys send F1–F6 from the keyboard's firmware; Fn plus the number row also sends F-keys. All notes play at
+velocity 100. Settings are in `[keebdeck]` in `~/.config/pitop-weather.ini`: `enabled`, `match` (the name in
+`/dev/input/by-id/`), `octave`, `channel`, `velocity`. Tested on the Pi: 288 notes, every note-on matched by its note-off.
+
 ## Bluetooth MIDI controllers
 
 Any controller that advertises Bluetooth MIDI connects by itself: no pairing, no cable. It shows on the Sonic Pi

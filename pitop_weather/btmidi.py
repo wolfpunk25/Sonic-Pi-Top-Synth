@@ -251,8 +251,16 @@ class AutoConnect:
                 if not d.get("Connected"):
                     self.connect(p, d)
         except self.dbus.DBusException as e:
-            log("bluez: %s" % e.get_dbus_name())
-            self.adapter_path, self.scanning = None, False   # bluetoothd restarted: start over
+            name = e.get_dbus_name()
+            log("bluez: %s" % name)
+            if name in ("org.freedesktop.DBus.Error.ServiceUnknown", "org.freedesktop.DBus.Error.NoReply",
+                        "org.freedesktop.DBus.Error.UnknownObject"):
+                # bluetoothd restarted: it has forgotten our agent, discovery
+                # filter and signal subscriptions. Exit and let systemd start
+                # us again cleanly (Restart=always, 5 s).
+                log("bluetoothd went away - restarting")
+                os._exit(3)
+            self.adapter_path, self.scanning = None, False
         return True
 
     def is_midi_path(self, path: str) -> bool:

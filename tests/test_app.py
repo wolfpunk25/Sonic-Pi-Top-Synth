@@ -821,3 +821,119 @@ class TestSonicPiPieces(unittest.TestCase):
     def test_run_before_ready_is_refused(self):
         e = sonicpi.Engine("x", "y")
         self.assertFalse(e.run("play 60"))
+
+
+class TestKeebDeck(unittest.TestCase):
+    from pitop_weather import keeb as K
+
+    def press(self, m, code):
+        return m.handle(code, 1) + m.handle(code, 0)
+
+    def test_musical_typing_layout(self):
+        K = self.K
+        m = K.KeyMapper(octave=4)
+        self.assertEqual(m.handle(K.KEY_A, 1), [("midi", bytes([0x90, 60, 100]))])   # middle C
+        self.assertEqual(m.handle(K.KEY_A, 0), [("midi", bytes([0x80, 60, 0]))])
+        notes = {code: m.note_for(code) for code in (K.KEY_W, K.KEY_J, K.KEY_K, K.KEY_APOSTROPHE, K.KEY_Z, K.KEY_M)}
+        self.assertEqual(notes, {K.KEY_W: 61, K.KEY_J: 71, K.KEY_K: 72, K.KEY_APOSTROPHE: 77,
+                                 K.KEY_Z: 48, K.KEY_M: 59})
+
+    def test_octave_and_transpose(self):
+        K = self.K
+        m = K.KeyMapper(octave=4)
+        m.handle(K.KEY_1 + 1, 1)            # "2"
+        self.assertEqual(m.note_for(K.KEY_A), 36)
+        m.handle(K.KEY_RIGHT, 1); m.handle(K.KEY_UP, 1); m.handle(K.KEY_UP, 1)
+        self.assertEqual(m.note_for(K.KEY_A), 50)
+        for _ in range(20):
+            m.handle(K.KEY_LEFT, 1)
+        self.assertEqual(m.octave, 0)
+
+    def test_note_off_matches_note_on_after_an_octave_change(self):
+        K = self.K
+        m = K.KeyMapper(octave=4)
+        m.handle(K.KEY_A, 1)
+        m.handle(K.KEY_RIGHT, 1)
+        self.assertEqual(m.handle(K.KEY_A, 0), [("midi", bytes([0x80, 60, 0]))])
+
+    def test_autorepeat_and_double_press_are_ignored(self):
+        K = self.K
+        m = K.KeyMapper()
+        m.handle(K.KEY_A, 1)
+        self.assertEqual(m.handle(K.KEY_A, 2), [])
+        self.assertEqual(m.handle(K.KEY_A, 1), [])
+
+    def test_sustain_holds_notes_until_released(self):
+        K = self.K
+        m = K.KeyMapper()
+        m.handle(K.KEY_F5, 1)
+        self.press(m, K.KEY_A)
+        self.press(m, K.KEY_D)
+        out = m.handle(K.KEY_F5, 0)
+        offs = [p[1] for k, p in out if k == "midi" and p[0] == 0x80]
+        self.assertEqual(offs, [60, 64])
+
+    def test_panic_and_actions(self):
+        K = self.K
+        m = K.KeyMapper()
+        m.handle(K.KEY_A, 1)
+        out = m.handle(K.KEY_F6, 1)
+        self.assertIn(("midi", bytes([0x80, 60, 0])), out)
+        self.assertIn(("midi", bytes([0xB0, 123, 0])), out)
+        self.assertEqual(m.handle(K.KEY_F1, 1), [("action", "stop")])
+        self.assertEqual(m.handle(K.KEY_F3, 1), [("action", "next")])
+
+    def test_escape_lets_go_and_takes_back(self):
+        K = self.K
+        m = K.KeyMapper()
+        m.handle(K.KEY_A, 1)
+        out = m.handle(K.KEY_ESC, 1)
+        self.assertEqual(out[-1], ("grab", False))
+        self.assertIn(("midi", bytes([0x80, 60, 0])), out)    # held note released
+        self.assertEqual(m.handle(K.KEY_S, 1), [])            # typing: no MIDI
+        self.assertEqual(m.handle(K.KEY_ESC, 1), [("grab", True)])
+
+    def test_channel_and_range(self):
+        K = self.K
+        m = K.KeyMapper(octave=8, channel=3)
+        self.assertEqual(m.handle(K.KEY_A, 1)[0][1][0], 0x92)
+        self.assertEqual(m.note_for(K.KEY_APOSTROPHE), 125)   # 108+17: still a note
+        for _ in range(12):
+            m.handle(K.KEY_UP, 1)
+        self.assertIsNone(m.note_for(K.KEY_APOSTROPHE))       # +12 more is past 127
+        self.assertEqual(m.handle(K.KEY_APOSTROPHE, 1), [])   # silently nothing
+
+
+class TestKeebActions(unittest.TestCase):
+    def setUp(self):
+        self.eng = FakeEngine()
+        self.a, self.hw, self.spk, self.clk = make_app(engine=self.eng)
+        self.eng.boot()
+
+    def act(self, action):
+        self.a.events.put(("_keeb", action))
+        self.a.tick()
+
+    def test_next_and_prev_step_through_the_category(self):
+        self.act("next")
+        self.assertEqual(self.a.sp_playing, "Keys")          # first in Keys
+        self.assertEqual(self.a.names[self.a.page], "sonicpi")
+        self.act("next")
+        self.assertEqual(self.a.sp_playing, "Chords")
+        self.act("prev")
+        self.act("prev")
+        self.assertEqual(self.a.sp_playing_cat, "Keys")
+        self.assertEqual(self.a.sp_playing, self.a.sp_group("Keys")[-1].title)   # wraps
+
+    def test_stop_and_output(self):
+        self.act("next")
+        self.act("stop")
+        self.assertIsNone(self.a.sp_playing)
+        self.act("output")
+        self.assertEqual(self.eng.outputs_set, ["speaker"])
+
+    def test_status_shows_in_the_bottom_bar(self):
+        goto(self.a, "sonicpi")
+        self.act("status:KeebDeck: typing")
+        self.a.frame()
+        self.assertEqual(self.a.status.sp.error, "KeebDeck: typing")
