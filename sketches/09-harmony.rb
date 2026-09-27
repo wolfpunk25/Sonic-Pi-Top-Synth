@@ -1,5 +1,6 @@
 # Harmony - each key plays a three-note chord in C major
 # category: Keys
+# gain: 1.51
 # Every note gets the chord built on it from the white-key scale.
 # Black keys snap to the nearest white key.
 

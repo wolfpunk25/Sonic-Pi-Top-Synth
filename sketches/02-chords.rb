@@ -1,5 +1,6 @@
 # Chords - each key plays a soft minor-7th pad
 # category: Keys
+# gain: 2.24
 # One finger, whole chords. Long release, lots of reverb.
 
 with_fx :reverb, room: 0.85, mix: 0.5 do

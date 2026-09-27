@@ -1,5 +1,6 @@
 # Evolving sequencer - a pattern that keeps changing, and you steer it
 # category: Sequencers
+# gain: 1.05
 # A 16-step melody mutates a little every bar. Your notes push it:
 #   below middle C   - changes the key (the bass follows)
 #   middle C and up  - your note is written into the pattern, and the interval

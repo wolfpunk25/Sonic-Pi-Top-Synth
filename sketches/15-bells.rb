@@ -1,5 +1,6 @@
 # Bells - keys ring slow, shimmering bells
 # category: Keys
+# gain: 0.35
 # Each note also rings an octave up, softer, with a long cathedral tail.
 
 with_fx :reverb, room: 1, mix: 0.6, damp: 0.3 do

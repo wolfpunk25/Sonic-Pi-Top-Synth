@@ -1,5 +1,6 @@
 # Loop what you play - play a phrase, pause, and it loops
 # category: Sequencers
+# gain: 1.40
 # Play a few notes (two or more), then stop for a second: your phrase
 # loops on a kalimba, in your own rhythm. Play a new phrase and pause
 # again to replace it; the old one finishes its pass first.

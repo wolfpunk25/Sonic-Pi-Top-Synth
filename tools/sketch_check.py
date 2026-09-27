@@ -42,13 +42,18 @@ def main(paths, seconds=4.0):
     if e.state != "ready":
         sys.exit("Sonic Pi didn't start: " + e.error)
     bad = 0
+    # build each sketch the way the app does: its gain, and for "# keys: last"
+    # sketches the Pluck keys sketch alongside
+    folder = os.path.dirname(os.path.abspath(paths[0])) if paths else "."
+    everything = {os.path.abspath(s.path): s for s in sonicpi.load_sketches(folder)}
+    pluck = next((s for s in everything.values() if s.title == "Pluck"), None)
+    fake_weather = type("W", (), dict(temp=11.0, precip_now=0.4, wind=12.0, code=61, is_day=True))()
     for p in paths:
-        with open(p) as f:
-            code = f.read()
+        sk = everything.get(os.path.abspath(p)) or sonicpi.Sketch(p, os.path.basename(p))
+        code = sonicpi.build_code(sk, fake_weather, pluck)
         e.stop_all()
         time.sleep(0.5)
-        e.run("set :wx_known, true; set :wx_temp, 11.0; set :wx_rain, 0.4; set :wx_wind, 12.0; "
-              "set :wx_code, 61; set :wx_day, true\n" + code)
+        e.run(code)
         time.sleep(1.5)
         subprocess.run(["aplaymidi", "-p", "14:0", mid], capture_output=True)
         time.sleep(max(0.5, seconds - 1.5))

@@ -55,6 +55,7 @@ class SpView:
     browsing: bool = False
     cursor: int = 0
     playing: Optional[str] = None
+    playing_with: Optional[str] = None    # Keys sound added to a groove
     pending: Optional[str] = None
     error: str = ""
 
@@ -562,7 +563,7 @@ def page_sonicpi(w: Optional[Weather], st: Status) -> Image.Image:
     if not v.browsing:
         if v.playing:
             big = "Playing"
-            sub = v.playing
+            sub = v.playing + (" + " + v.playing_with if v.playing_with else "")
         elif v.pending:
             big, sub = "Starting...", v.pending
         else:

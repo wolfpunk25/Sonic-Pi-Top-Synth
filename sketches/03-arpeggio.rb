@@ -1,5 +1,6 @@
 # Arpeggio - the last key you press sets the root
 # category: Sequencers
+# gain: 1.06
 # It starts on C straight away; play a key to move it.
 
 set :root, :c3

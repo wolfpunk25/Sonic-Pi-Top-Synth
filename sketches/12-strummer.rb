@@ -1,5 +1,6 @@
 # Strummer - each key strums a guitar-like chord
 # category: Keys
+# gain: 1.37
 # Plucked strings, low to high, with a little gap between each.
 # The chord is major on white keys and minor on black keys.
 

@@ -9,6 +9,7 @@ from datetime import datetime, time as dtime, timedelta
 from pitop_weather import app, forecast, recorder, render, sonicpi, speech
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+app.CACHE = tempfile.mkdtemp(prefix="pitop-cache-")      # never touch the real ~/.cache in tests
 SAMPLE = json.load(open(os.path.join(HERE, "sample_london.json")))
 NIGHT = datetime(2026, 9, 26, 23, 29)
 AFTERNOON = datetime(2026, 9, 26, 15, 10)
@@ -124,7 +125,8 @@ class FakeEngine:
         self.state = "off"
 
 
-def make_app(local=NIGHT, mic="Fake USB Mic", source_seconds=3.0, engine=None, **cfg):
+def make_app(local=NIGHT, mic="Fake USB Mic", source_seconds=3.0, engine=None, cache=None, **cfg):
+    app.CACHE = cache or tempfile.mkdtemp(prefix="pitop-cache-")   # each app starts with nothing remembered
     c = app.Config(None)
     c.quiet_from = c.quiet_until = dtime(0, 0)   # never quiet unless a test says so
     c.rec_folder = tempfile.mkdtemp(prefix="soundwalks-")
@@ -692,6 +694,47 @@ class TestSonicPi(unittest.TestCase):
         self.assertFalse(a.sp_browsing)
         self.assertTrue(a.frame().getbbox())
 
+    def play(self, category, title):
+        self.a.sp_cat, self.a.sp_cursor = None, 0
+        self.open_category(category)
+        titles = [r[1].title for r in self.a.sp_rows()]
+        self.a.sp_cursor = titles.index(title)
+        press(self.a, "select")
+
+    def test_groove_uses_pluck_until_a_keys_sound_is_chosen(self):
+        press(self.a, "select")
+        self.eng.boot()
+        self.play("Grooves", "Beat and keys")
+        self.assertIn("sample :bd_haus", self.eng.ran[-1])
+        self.assertIn("synth :pluck", self.eng.ran[-1])
+        self.assertEqual(self.a.sp_with, "Pluck")
+
+    def test_groove_uses_the_last_keys_sound_even_after_a_restart(self):
+        press(self.a, "select")
+        self.eng.boot()
+        self.play("Keys", "Piano")
+        self.play("Sequencers", "Arpeggio")          # not Keys: doesn't change the choice
+        self.play("Grooves", "Beat and keys")
+        self.assertIn("synth :piano", self.eng.ran[-1])
+        self.assertNotIn("synth :pluck", self.eng.ran[-1])
+        self.assertEqual(self.a.sp_with, "Piano")
+        self.assertEqual(self.a.frame() and self.a.status.sp.playing_with, "Piano")
+        # a new app (e.g. after a reboot) remembers
+        eng2 = FakeEngine()
+        a2, _, _, _ = make_app(engine=eng2, cache=app.CACHE)
+        self.assertEqual(a2.sp_last_keys, "Piano")
+
+    def test_sketch_gains_wrap_the_code(self):
+        press(self.a, "select")
+        self.eng.boot()
+        sk = next(k for k in self.a.sketches if k.title == "Beat and keys")
+        keys = next(k for k in self.a.sketches if k.title == "Pluck")
+        sk.gain, keys.gain = 0.5, 2.0
+        code = sonicpi.build_code(sk, None, keys)
+        self.assertIn("with_fx :level, amp: 0.50 do\n", code)
+        self.assertIn("with_fx :level, amp: 2.00 do\n", code)
+        self.assertEqual(code.count("with_fx :level"), 2)
+
     def test_speech_is_silenced_by_a_new_sketch(self):
         press(self.a, "select")
         self.eng.boot()
@@ -724,6 +767,32 @@ class TestSonicPiPieces(unittest.TestCase):
         self.assertEqual(sonicpi.short_error("Syntax Error Sonic Pi couldn't read your code"), "Syntax error")
         self.assertEqual(sonicpi.short_error("Runtime Error [buffer 3, line 4] - ZeroDivisionError"),
                          "[buffer 3, line 4] - ZeroDivisionError")
+
+    def test_gain_and_keys_lines_are_read(self):
+        d = tempfile.mkdtemp()
+        with open(os.path.join(d, "01-x.rb"), "w") as f:
+            f.write("# X - thing\n# category: grooves\n# keys: last\n# gain: 1.75\nplay 60\n")
+        with open(os.path.join(d, "02-y.rb"), "w") as f:
+            f.write("# Y\n# gain: nonsense\nplay 60\n")
+        x, y = sonicpi.load_sketches(d)
+        self.assertEqual((x.category, x.keys, x.gain), ("Grooves", "last", 1.75))
+        self.assertEqual((y.gain, y.keys), (1.0, ""))
+        self.assertEqual(sonicpi.wrap_gain("play 60\n", 1.0), "play 60\n")
+
+    def test_starters_are_fifteen_per_category(self):
+        cats = sonicpi.categories(sonicpi.load_sketches(sonicpi.STARTER_SKETCHES))
+        self.assertEqual([(c, len(g)) for c, g in cats],
+                         [("Keys", 15), ("Sequencers", 15), ("Grooves", 15), ("Ambient", 15)])
+
+    def test_errors_are_never_blank(self):
+        reserved = ("Runtime Error \n\nbuffer eval, line 1392\nYou may not use the built-in fn names as "
+                    "variable names. (SonicPi::PreParser::PreParseError)\n You attempted to use: line")
+        self.assertEqual(sonicpi.short_error(reserved), "Reserved name: line")
+        self.assertEqual(sonicpi.short_error("Runtime Error\n\nbuffer eval, line 3\nNoMethodError: "
+                                             "undefined method '[]' for nil"),
+                         "NoMethodError: undefined method '[]' for nil")
+        self.assertTrue(sonicpi.short_error("Runtime Error\n"))
+        self.assertTrue(sonicpi.short_error(""))
 
     def test_run_before_ready_is_refused(self):
         e = sonicpi.Engine("x", "y")

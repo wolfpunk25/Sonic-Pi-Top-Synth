@@ -1,5 +1,6 @@
 # Echo keys - every note repeats and fades
 # category: Keys
+# gain: 0.73
 # A bright synth through a dotted-eighth echo. Play slowly and let it ring.
 
 with_fx :echo, phase: 0.375, decay: 6, mix: 0.45 do

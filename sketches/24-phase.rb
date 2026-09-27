@@ -1,5 +1,6 @@
 # Phase - two players, one tune, slowly drifting apart
 # category: Sequencers
+# gain: 0.87
 # The same eight notes on left and right, one a touch faster, so the
 # pattern slides against itself (after Steve Reich's Piano Phase).
 # Play eight notes to give them a new tune.

@@ -1,5 +1,6 @@
 # Tidal - waves on a shore, and the odd gull
 # category: Ambient
+# gain: 1.26
 # No keys needed. Keys ring soft bells over the water.
 
 with_fx :reverb, room: 0.8, mix: 0.4 do

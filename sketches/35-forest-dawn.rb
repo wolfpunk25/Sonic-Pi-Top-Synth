@@ -1,5 +1,6 @@
 # Forest dawn - birdsong over a soft morning pad
 # category: Ambient
+# gain: 5.08
 # No keys needed. Keys play a gentle kalimba among the birds.
 
 define :warble do |base, pan|

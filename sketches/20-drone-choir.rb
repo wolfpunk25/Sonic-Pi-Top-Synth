@@ -1,5 +1,6 @@
 # Drone choir - build a slowly breathing chord, one key at a time
 # category: Ambient
+# gain: 1.06
 # Press a note to add it to the drone; press it again to take it out.
 # Up to six voices; the oldest drops out when you add a seventh.
 

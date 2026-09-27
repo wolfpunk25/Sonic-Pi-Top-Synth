@@ -1,5 +1,6 @@
 # Cellular - a melody grown by a cellular automaton
 # category: Sequencers
+# gain: 2.60
 # A row of 16 cells evolves every bar by a simple rule; live cells play
 # notes. White keys flip a cell on or off; black keys change the rule.
 # If the row ever dies out, a single cell is planted to start again.

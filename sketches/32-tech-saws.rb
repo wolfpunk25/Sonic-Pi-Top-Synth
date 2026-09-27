@@ -1,5 +1,6 @@
 # Tech saws - a wide, glossy synth pad
 # category: Keys
+# gain: 1.10
 
 with_fx :reverb, room: 0.8, mix: 0.4 do
   live_loop :saws do

@@ -1,5 +1,6 @@
 # Acid bass - keys set the root of a squelchy bassline
 # category: Sequencers
+# gain: 0.81
 # A TB-303 pattern with a slowly opening filter, over a four-on-the-floor kick.
 
 set :bass_root, 40            # E2, as a MIDI number so the pattern can add to it

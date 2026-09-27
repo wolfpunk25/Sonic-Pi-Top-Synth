@@ -117,6 +117,8 @@ class App:
         self.sp_playing_cat: Optional[str] = None
         self.sp_cat: Optional[str] = None         # None = the category list
         self.sp_cat_cursor = 0                    # where to come back to
+        self.sp_with: Optional[str] = None        # the Keys sound added to a "# keys: last" sketch
+        self.sp_last_keys = self.load_last_keys()
         self.sp_pending: Optional[sonicpi.Sketch] = None
         self.sp_started_at = 0.0
         self._last_mic_poll = -1e9
@@ -251,7 +253,7 @@ class App:
                 self.sp_cat, self.sp_cursor = None, self.sp_cat_cursor
             elif self.sp_playing or self.sp_pending:
                 self.engine.stop_all()
-                self.sp_playing = self.sp_pending = self.sp_playing_cat = None
+                self.sp_playing = self.sp_pending = self.sp_playing_cat = self.sp_with = None
             else:
                 self.sp_browsing = False
 
@@ -263,15 +265,44 @@ class App:
             return
         self.speaker.stop()
         self.engine.stop_all()
+        if sketch.category == "Keys":
+            self.sp_last_keys = sketch.title
+            self.save_last_keys()
+        keys = self.keys_sketch() if sketch.keys == "last" else None
         try:
-            code = sketch.code()
+            code = sonicpi.build_code(sketch, self.view(), keys)
         except OSError as e:
             self.engine.error = str(e)
             return
-        self.engine.run(sonicpi.weather_header(self.view()) + code)
+        self.engine.run(code)
         self.sp_playing, self.sp_pending = sketch.title, None
         self.sp_playing_cat = sketch.category
+        self.sp_with = keys.title if keys else None
         self.sp_started_at = self.clock()
+
+    def keys_sketch(self) -> Optional["sonicpi.Sketch"]:
+        """The last Keys sketch played; Pluck (or the first Keys sketch) until then."""
+        keys = self.sp_group("Keys")
+        for want in (self.sp_last_keys, "Pluck"):
+            found = next((k for k in keys if k.title == want), None)
+            if found:
+                return found
+        return keys[0] if keys else None
+
+    def load_last_keys(self) -> Optional[str]:
+        try:
+            with open(os.path.join(CACHE, "sonicpi.json")) as f:
+                return json.load(f).get("last_keys")
+        except (OSError, ValueError):
+            return None
+
+    def save_last_keys(self):
+        try:
+            os.makedirs(CACHE, exist_ok=True)
+            with open(os.path.join(CACHE, "sonicpi.json"), "w") as f:
+                json.dump({"last_keys": self.sp_last_keys}, f)
+        except OSError:
+            pass
 
     def cycle_output(self):
         roles = self.outputs() or ["default"]
@@ -296,6 +327,7 @@ class App:
             return
         v.state, v.midi, v.output = e.state, e.midi_name, audio.LABELS.get(e.output, e.output)
         v.browsing, v.cursor, v.playing = self.sp_browsing, self.sp_cursor, self.sp_playing
+        v.playing_with = self.sp_with if self.sp_playing else None
         v.pending = self.sp_pending.title if self.sp_pending else None
         v.title = self.sp_cat or "Sonic Pi"
         pend_cat = self.sp_pending.category if self.sp_pending else None

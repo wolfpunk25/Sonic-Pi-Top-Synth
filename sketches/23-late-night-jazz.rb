@@ -1,5 +1,6 @@
 # Late night jazz - a walking bass trio you can play over
 # category: Grooves
+# gain: 1.97
 # ii-V-I-vi on electric piano, walking bass and a swung ride.
 # Keys below G3 change the key; higher keys play electric piano.
 

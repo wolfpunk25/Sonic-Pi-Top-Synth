@@ -1,5 +1,6 @@
 # Supersaw - a huge detuned trance lead
 # category: Keys
+# gain: 2.14
 
 with_fx :reverb, room: 0.6, mix: 0.3 do
   with_fx :echo, phase: 0.375, decay: 2, mix: 0.2 do

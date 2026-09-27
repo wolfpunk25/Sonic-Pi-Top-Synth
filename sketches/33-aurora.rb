@@ -1,5 +1,6 @@
 # Aurora - slow shifting chords under a breathing filter
 # category: Ambient
+# gain: 3.77
 # No keys needed. Keys add soft high notes that hang in the air.
 
 progression = [chord(:d3, :m9), chord(:bb2, :major7), chord(:f3, :add9), chord(:c3, :sus2)]

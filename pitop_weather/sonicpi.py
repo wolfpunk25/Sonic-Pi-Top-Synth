@@ -87,16 +87,27 @@ def parse_osc(data: bytes):
 
 
 def short_error(text: str) -> str:
-    """Sonic Pi's errors, cut down to fit 128 pixels."""
-    t = re.sub(r"<[^>]+>", "", text).strip().splitlines()[0] if text.strip() else "error"
-    m = re.search(r"doesn't know a function called `([^`]+)`", t)
+    """Sonic Pi's errors, cut down to fit 128 pixels. Never empty: some
+    messages start with a bare "Runtime Error" line and say what went wrong
+    further down, so look through all of it."""
+    clean = re.sub(r"<[^>]+>", "", text or "")
+    lines = [l.strip() for l in clean.splitlines() if l.strip()]
+    m = re.search(r"doesn't know a function called `([^`]+)`", clean)
     if m:
         return "Unknown: " + m.group(1)
-    if "couldn't read your code" in t or t.startswith("Syntax Error"):
+    m = re.search(r"You attempted to use: `?(\w+)", clean)
+    if m:
+        return "Reserved name: " + m.group(1)
+    if "couldn't read your code" in clean or (lines and lines[0].startswith("Syntax Error")):
         return "Syntax error"
-    t = re.sub(r"^(Runtime Error|Error)[:\s]*", "", t)
-    t = t.replace("Sonic Pi ", "")
-    return t[:80]
+    m = re.search(r"\b([A-Z]\w*Error): (.+)", clean)
+    if m:
+        return ("%s: %s" % (m.group(1), m.group(2)))[:80]
+    for l in lines:
+        t = re.sub(r"^(Runtime Error|Error)[:\s]*", "", l).replace("Sonic Pi ", "").strip()
+        if t and not t.startswith("buffer eval"):
+            return t[:80]
+    return "Error (see Sonic Pi log)"
 
 
 def parse_ports(args) -> List[str]:
@@ -125,6 +136,8 @@ class Sketch:
     path: str
     title: str
     category: str = "Other"
+    gain: float = 1.0             # "# gain: 1.4" - set by tools/level_check.py so sketches match
+    keys: str = ""                # "# keys: last" - add the last-played Keys sketch as the instrument
 
     def code(self) -> str:
         with open(self.path, encoding="utf-8") as f:
@@ -146,13 +159,40 @@ def load_sketches(folder: str) -> List[Sketch]:
             continue
         if head[0].startswith("#"):
             title = re.split(r"\s+[-–—]\s+", head[0].lstrip("# ").strip())[0] or title
+        gain, keys = 1.0, ""
         for line in head:
-            m = re.match(r"#\s*category\s*:\s*(.+)", line, re.I)
-            if m:
-                category = m.group(1).strip().title()
-                break
-        out.append(Sketch(path, title, category))
+            m = re.match(r"#\s*(category|gain|keys)\s*:\s*(.+)", line, re.I)
+            if not m:
+                continue
+            key, val = m.group(1).lower(), m.group(2).strip()
+            if key == "category":
+                category = val.title()
+            elif key == "gain":
+                try:
+                    gain = max(0.05, min(8.0, float(val)))
+                except ValueError:
+                    pass
+            else:
+                keys = val.lower()
+        out.append(Sketch(path, title, category, gain, keys))
     return out
+
+
+def wrap_gain(code: str, gain: float) -> str:
+    """Put a sketch inside a level effect so its loudness matches the others.
+    Everything it starts - live_loops included - plays through the effect."""
+    if abs(gain - 1.0) < 0.005:
+        return code
+    return "with_fx :level, amp: %.2f do\n%s\nend\n" % (gain, code.rstrip("\n"))
+
+
+def build_code(sketch: Sketch, weather, keys_sketch: Optional[Sketch] = None) -> str:
+    """The code sent to Sonic Pi: weather, the sketch at its level, and, for a
+    "# keys: last" sketch, the chosen Keys sketch at its own level alongside."""
+    code = weather_header(weather) + wrap_gain(sketch.code(), sketch.gain)
+    if sketch.keys == "last" and keys_sketch is not None:
+        code += "\n" + wrap_gain(keys_sketch.code(), keys_sketch.gain)
+    return code
 
 
 def categories(sketches: List[Sketch]) -> List[tuple]:

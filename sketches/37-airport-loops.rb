@@ -1,5 +1,6 @@
 # Airport loops - long loops of different lengths drifting in and out of line
 # category: Ambient
+# gain: 1.07
 # After Brian Eno's Music for Airports: each voice sings one note on its own
 # cycle, so the combination never quite repeats. Each key gives the next
 # voice your note instead.

@@ -1,5 +1,6 @@
 # Music box - a tune that slowly winds down
 # category: Ambient
+# gain: 2.04
 # It plays by itself, getting slower and quieter as the spring runs out.
 # Every key you press winds it back up and adds your note to the tune.
 

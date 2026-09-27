@@ -1,5 +1,6 @@
 # Deep bass - a fat synth bass, an octave below what you play
 # category: Keys
+# gain: 0.92
 # Two layers: a round foundation and a growly top.
 
 live_loop :bass do

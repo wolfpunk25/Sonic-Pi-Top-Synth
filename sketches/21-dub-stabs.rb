@@ -1,5 +1,6 @@
 # Dub stabs - chords that echo away over a slow dub groove
 # category: Grooves
+# gain: 1.19
 # Each key fires a short minor-chord stab into a long echo.
 # Keys below A3 move the bassline to that note.
 

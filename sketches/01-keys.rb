@@ -1,5 +1,6 @@
 # Keys - Prophet synth on your keyboard
 # category: Keys
+# gain: 1.01
 # Every note you play, straight through a warm analogue-style synth.
 
 live_loop :keys do

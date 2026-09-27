@@ -1,5 +1,6 @@
 # Snowfall - sparse glassy bells, slowly falling
 # category: Ambient
+# gain: 2.63
 # No keys needed; twice as many flakes when it's really snowing.
 # Keys add your own flakes, an octave up.
 

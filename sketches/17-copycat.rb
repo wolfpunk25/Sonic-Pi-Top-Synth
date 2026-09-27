@@ -1,5 +1,6 @@
 # Copycat - improvises from what you've played
 # category: Sequencers
+# gain: 3.51
 # It learns which note tends to follow which, and wanders through your own ideas.
 # Play a phrase, stop, and listen to it come back rearranged.
 

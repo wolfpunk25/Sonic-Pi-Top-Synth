@@ -1,5 +1,6 @@
 # Organ - a tonewheel organ through a slow swirl
 # category: Keys
+# gain: 0.76
 # Each note holds for a moment, like a drawbar organ with a slow rotary speaker.
 
 with_fx :reverb, room: 0.4, mix: 0.2 do

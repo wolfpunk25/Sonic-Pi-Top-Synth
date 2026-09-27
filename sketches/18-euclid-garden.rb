@@ -1,5 +1,6 @@
 # Euclid garden - three rhythms drifting in and out of phase
 # category: Sequencers
+# gain: 1.89
 # Each voice spreads its hits evenly over 16 steps; every two bars one of
 # them gains or loses a hit, or shifts round. Each key you play gives the
 # next voice that pitch and a new number of hits.
